@@ -13,6 +13,10 @@ function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return {
 function makeProfile(id='c'.repeat(32),name='已有娃娃'){
  return {id,name,height_cm:17,gender:'female',notes:'原档案备注',views:['front','left'],photos:{front:'/old-front.png',left:'/old-left.png'},designs:[],measurement:{status:'idle'}};
 }
+function makeJob(tripo){
+ const id='e'.repeat(32),images=Object.fromEntries(['front','left','back','right'].map(v=>[v,'/media/design/'+id+'/'+v+'_dressed.png']));
+ return {id,prompt:'测试服装',status:'succeeded',images,view_status:{},errors:{},tripo:tripo||{status:'idle'}};
+}
 async function page(options={}){
  const dom=new JSDOM(fs.readFileSync(path.join(root,'workbench.html'),'utf8'),{url:'https://dollfit.test/workbench.html',runScripts:'outside-only'});
  const w=dom.window, calls=[],state={user:options.user||null,loginUser:options.loginUser||USER,profiles:options.profiles||[],saved:0,bootstrapCount:0};
@@ -39,6 +43,13 @@ async function page(options={}){
    }
   }else if(endpoint.startsWith('profile/')){
    data=state.profiles.find(p=>p.id===endpoint.slice(8));if(!data){status=404;data={error:'档案不存在'}}
+  }else if(endpoint==='tripo'){
+   const job=state.profiles.flatMap(p=>p.designs).find(j=>j.id===body.job_id);
+   if(!job)throw Error('Wrong design sent to 3D');
+   job.tripo={status:'queued',progress:0};data=job.tripo;
+  }else if(endpoint==='import-design'){
+   const profile=state.profiles.find(p=>p.id===body.profile_id);
+   data=makeJob();profile.designs.push(data);
   }else throw Error('Unexpected API '+endpoint);
   return {status,ok:status>=200&&status<300,json:async()=>JSON.parse(JSON.stringify(data))};
  };
@@ -145,5 +156,68 @@ test('connection failures do not silently lock Save and are shown inside login',
  const p=await page({bootstrapFails:true});try{
   await p.draft();p.$('#profile-form').requestSubmit();assert.equal(p.$('#account-dialog').open,true);
   await p.login();assert.ok(p.$('#account-error').textContent);assert.equal(p.$('#save-profile').disabled,false);
+ }finally{p.dom.window.close()}
+});
+
+test('four dressed views wait for an explicit click and use their own job at maximum quality',async()=>{
+ const job=makeJob(),profile=makeProfile();profile.designs=[job];
+ const p=await page({user:USER,profiles:[profile]});try{
+  await until(()=>p.$('#generate-3d-'+job.id));
+  assert.equal(p.$('#auto-3d').checked,false);
+  assert.equal(p.calls.filter(c=>c.endpoint==='tripo').length,0);
+  const previews=[...p.w.document.querySelectorAll('.tripo-input-preview img')];
+  assert.deepEqual(previews.map(img=>img.getAttribute('src')),Object.values(job.images));
+  const button=p.$('#generate-3d-'+job.id);assert.equal(button.disabled,false);
+  button.click();button.click();
+  await until(()=>p.$('#generate-3d-'+job.id).disabled);
+  const submissions=p.calls.filter(c=>c.endpoint==='tripo');assert.equal(submissions.length,1);
+  assert.equal(submissions[0].body.job_id,job.id);assert.equal(submissions[0].body.preset,'highest');
+  assert.equal(p.calls.filter(c=>c.endpoint==='design').length,0);
+ }finally{p.dom.window.close()}
+});
+
+test('an upload failure can continue without asking for a non-existent model task number',async()=>{
+ const job=makeJob({status:'needs_attention',stage:'upload',submission_uncertain:false,message:'试穿图上传中断'}),profile=makeProfile();profile.designs=[job];
+ const p=await page({user:USER,profiles:[profile]});try{
+  await until(()=>p.$('#generate-3d-'+job.id));
+  assert.equal(p.$('.restore-task'),null);p.$('#generate-3d-'+job.id).click();
+  await until(()=>p.calls.some(c=>c.endpoint==='tripo'));
+  assert.equal(p.calls.find(c=>c.endpoint==='tripo').body.task_id,'');
+ }finally{p.dom.window.close()}
+});
+
+test('uncertain paid submissions require the saved provider ID and never silently generate again',async()=>{
+ const job=makeJob({status:'needs_attention',stage:'submit',submission_uncertain:true}),profile=makeProfile();profile.designs=[job];
+ const p=await page({user:USER,profiles:[profile]});try{
+  await until(()=>p.$('.restore-task'));p.$('#generate-3d-'+job.id).click();
+  await until(()=>p.$('#notice').textContent.includes('任务编号'));
+  assert.equal(p.calls.filter(c=>c.endpoint==='tripo').length,0);
+  p.$('.restore-task').value='provider-task-123456';p.$('#generate-3d-'+job.id).click();
+  await until(()=>p.calls.some(c=>c.endpoint==='tripo'));
+  assert.equal(p.calls.find(c=>c.endpoint==='tripo').body.task_id,'provider-task-123456');
+ }finally{p.dom.window.close()}
+});
+
+test('partial dressed views cannot be sent to 3D',async()=>{
+ const job=makeJob(),profile=makeProfile();delete job.images.back;profile.designs=[job];
+ const p=await page({user:USER,profiles:[profile]});try{
+  await until(()=>p.$('#generate-3d-'+job.id));assert.equal(p.$('#generate-3d-'+job.id).disabled,true);
+  p.$('#generate-3d-'+job.id).click();assert.equal(p.calls.filter(c=>c.endpoint==='tripo').length,0);
+ }finally{p.dom.window.close()}
+});
+
+test('importing four saved dressed views does not call either paid generation API',async()=>{
+ const profile=makeProfile(),p=await page({user:USER,profiles:[profile]});try{
+  await until(()=>p.$('#name').value===profile.name);p.$('#import-open').click();
+  assert.equal(p.$('#import-dialog').open,true);
+  for(const [i,v]of ['front','left','back','right'].entries()){
+   Object.defineProperty(p.$('#import-'+v),'files',{configurable:true,value:[new p.w.File([new Uint8Array([1,2,3,i])],v+'.png',{type:'image/png'})]});
+  }
+  // jsdom's synthetic files do not populate native FileList validity; the handler also validates all four files.
+  p.$('#import-form').dispatchEvent(new p.w.Event('submit',{cancelable:true}));await until(()=>!p.$('#import-dialog').open);
+  const imports=p.calls.filter(c=>c.endpoint==='import-design');assert.equal(imports.length,1);
+  assert.equal(imports[0].body.profile_id,profile.id);assert.deepEqual(Object.keys(imports[0].body.views),['front','left','back','right']);
+  assert.equal(p.calls.filter(c=>['design','tripo'].includes(c.endpoint)).length,0);
+  assert.ok(p.$('#generate-3d-'+makeJob().id));
  }finally{p.dom.window.close()}
 });

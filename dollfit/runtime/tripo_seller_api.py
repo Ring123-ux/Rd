@@ -4,12 +4,28 @@ import os
 from pathlib import Path
 import re
 import requests
+import time
 from .wardrobe_settings import ROOT, _crypt, redact
 from .wardrobe_api import _public_url
 
 BASE='http://47.120.44.134'
 SECRET=ROOT/'config'/'tripo_purchased_credentials.dpapi'
 MAX_FACE_COUNT=1500000
+
+
+class ProviderConnectionError(ValueError):
+    def __init__(self, stage, cause):
+        self.stage = stage
+        self.error_kind = type(cause).__name__
+        message = {'upload': '试穿图上传中断；尚未提交3D生成，可以继续传图。',
+                   'submit': '3D提交响应中断，服务商可能已接收；请核对任务编号后恢复，未自动重提。',
+                   'query': '3D任务查询连接中断，已有任务编号会保留。',
+                   'preflight': '3D服务连接检查失败，请稍后重试。'}.get(stage, '3D服务连接中断。')
+        super().__init__(message)
+
+
+class ProviderRejected(ValueError):
+    """An explicit client/quota/auth rejection, rather than an uncertain create response."""
 
 def save_key(value):
     raise ValueError('请在 Render Environment 中修改 TRIPO_API_KEY。')
@@ -32,18 +48,21 @@ def request(method,path,**kwargs):
     # This is the exact HTTP endpoint explicitly supplied/authorized by the user.
     with requests.Session() as client:
         client.trust_env=False
+        stage = 'upload' if path == '/upload' else 'submit' if path == '/tripo3d/generate' else 'query' if path.startswith('/tripo3d/query/') else 'preflight'
+        timeout = (25, 240 if stage == 'upload' else 300 if stage == 'submit' else 120)
         try:
             response=client.request(method,BASE+path,headers={'Authorization':load_key()},
-                timeout=(20,120),allow_redirects=False,**kwargs)
-        except requests.RequestException:
-            message='服务商连接失败，请检查网络。' if method=='GET' else '服务商连接中断，请先核对任务记录。未自动重复提交生成。'
-            raise ValueError(message) from None
+                timeout=timeout,allow_redirects=False,**kwargs)
+        except requests.RequestException as error:
+            raise ProviderConnectionError(stage, error) from None
     if len(response.content)>5*1024*1024:raise ValueError('服务商响应过大。')
     try:body=response.json()
     except ValueError:raise ValueError(f'服务商返回HTTP {response.status_code}，响应不是JSON。') from None
     if not isinstance(body,dict):raise ValueError('服务商响应格式无效。')
     if response.status_code!=200 or body.get('success') is False:
-        raise ValueError(f'卖家接口HTTP {response.status_code}：'+error_text(body.get('detail') or body.get('message') or '请求失败'))
+        message=f'卖家接口HTTP {response.status_code}：'+error_text(body.get('detail') or body.get('message') or '请求失败')
+        if response.status_code in (400,401,402,403,404,405,413,422,429):raise ProviderRejected(message)
+        raise ValueError(message)
     return body
 
 def preflight():
@@ -56,8 +75,15 @@ def preflight():
 def upload(path):
     path=Path(path)
     if path.stat().st_size>20*1024*1024:raise ValueError('图片不能超过20MB。')
-    with path.open('rb') as file:
-        body=request('POST','/upload',files={'file':(path.name,file,'image/png')})
+    # Retrying a temporary FILE upload does not repeat a paid model generation.
+    for attempt in range(3):
+        try:
+            with path.open('rb') as file:
+                body=request('POST','/upload',files={'file':(path.name,file,'image/png')})
+            break
+        except ProviderConnectionError:
+            if attempt == 2:raise
+            time.sleep(2 * (attempt + 1))
     url=body.get('url')
     if not isinstance(url,str):raise ValueError('卖家接口没有返回图片地址。')
     _public_url(url)

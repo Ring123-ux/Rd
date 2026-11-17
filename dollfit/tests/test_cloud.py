@@ -285,3 +285,125 @@ def test_recovery_rejects_another_designs_task(monkeypatch):
     monkeypatch.setattr(seller, 'request', lambda *args, **kwargs: {'status': 'success', 'imageList': ['https://example.com/someone-else']})
     with pytest.raises(ValueError, match='不一致'):
         seller.verify_own_task('task-other-123456', uploaded)
+
+
+def imported_job(client):
+    account(client)
+    p=profile(client,four=True)
+    from runtime.wardrobe_settings import ROOT
+    source=cloud.wardrobe.PROJECTS/p['project_id']
+    views={v:'data:image/png;base64,'+base64.b64encode((source/(v+'.png')).read_bytes()).decode() for v in cloud.VIEWS}
+    response=send(client,'import-design',{'profile_id':p['id'],'views':views})
+    assert response.status_code==200,response.text
+    return p,response.json(),views
+
+
+def test_import_completed_views_is_idempotent_and_does_not_call_generation(client,monkeypatch):
+    monkeypatch.setattr(jobs,'edit_images',lambda *args:pytest.fail('Import must not regenerate clothes'))
+    monkeypatch.setattr(cloud.tripo,'create',lambda *args:pytest.fail('Import must not automatically create 3D'))
+    p,job,views=imported_job(client)
+    assert job['status']=='succeeded' and len(job['images'])==4
+    again=send(client,'import-design',{'profile_id':p['id'],'views':views})
+    assert again.json()['id']==job['id']
+    assert len(client.get('/api/profile/'+p['id']).json()['designs'])==1
+    missing=send(client,'import-design',{'profile_id':p['id'],'views':{'front':views['front']}})
+    assert missing.status_code==400
+
+
+def test_signed_provider_link_scopes_exact_image_and_expiry(client,monkeypatch):
+    from urllib.parse import urlsplit,parse_qs
+    monkeypatch.setenv('APP_URL','https://dollfit.test')
+    p,job,_=imported_job(client)
+    url=cloud.tripo_inputs.create(job['id'],'front');parts=urlsplit(url)
+    with TestClient(cloud.app) as vendor:
+        response=vendor.get(parts.path+'?'+parts.query)
+        assert response.status_code==200
+        assert response.content==(jobs.job_path(job['id'])/'front_dressed.png').read_bytes()
+        assert vendor.get(p['photos']['front']).status_code==401
+        assert vendor.get(parts.path.replace('/front.png','/left.png')+'?'+parts.query).status_code==403
+        assert vendor.get(parts.path+'?'+parts.query.replace('signature=','signature=0')).status_code==403
+        expired=int(cloud.tripo_inputs.time.time())-1
+        signature=cloud.tripo_inputs.signature(job['id'],'front',expired)
+        assert vendor.get(parts.path,params={'expires':expired,'signature':signature}).status_code==403
+
+
+def test_signed_handoff_uses_this_jobs_dressed_views_without_upload_post(client,monkeypatch):
+    monkeypatch.setenv('APP_URL','https://dollfit.test')
+    _,job,_=imported_job(client);jid=job['id'];calls=[]
+    jobs.write_json(jobs.job_path(jid)/'tripo.json',{'status':'queued','provider':'seller','preset':'highest'})
+    monkeypatch.setattr(cloud.tripo,'upload',lambda *args:pytest.fail('Signed source must not upload large files'))
+    monkeypatch.setattr(cloud.tripo,'create',lambda tokens,preset,provider:calls.append((tokens,preset,provider)) or 'task-valid-123456')
+    monkeypatch.setattr(cloud.tripo,'query',lambda *args:{'status':'success','progress':100,'face_count':1500000,'output':{'model_url':'https://example.com/model.glb'}})
+    monkeypatch.setattr(cloud.tripo,'download',lambda url,dest:dest.write_bytes(b'test-glb'))
+    cloud.run_tripo(jid)
+    assert len(calls)==1 and calls[0][1]=='highest'
+    assert set(calls[0][0])==set(cloud.VIEWS)
+    for view,url in calls[0][0].items():
+        assert '/tripo-input/'+jid+'/'+view+'.png?' in url
+        assert '/original/' not in url
+    state=jobs.read_json(jobs.job_path(jid)/'tripo.json')
+    assert state['input_source']=='signed_links' and state['status']=='succeeded'
+
+
+def test_file_upload_network_failures_retry_upload_only(tmp_path,monkeypatch):
+    import requests
+    file=tmp_path/'test.png';file.write_bytes(b'test-image');calls=[]
+    def request(*args,**kwargs):
+        calls.append(args)
+        if len(calls)<3:raise seller.ProviderConnectionError('upload',requests.ConnectionError())
+        return {'url':'https://example.com/input.png'}
+    monkeypatch.setattr(seller,'request',request);monkeypatch.setattr(seller,'_public_url',lambda x:x);monkeypatch.setattr(seller.time,'sleep',lambda _:None)
+    assert seller.upload(file)=='https://example.com/input.png'
+    assert len(calls)==3 and all(x[:2]==('POST','/upload') for x in calls)
+
+
+def test_paid_create_timeout_is_never_retried(monkeypatch):
+    import requests
+    calls=[]
+    class Session:
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def request(self,*args,**kwargs):
+            calls.append((args,kwargs));raise requests.ReadTimeout()
+    monkeypatch.setenv('TRIPO_API_KEY','fake-test-key')
+    monkeypatch.setattr(seller.requests,'Session',Session)
+    monkeypatch.setattr(seller,'_public_url',lambda x:x)
+    with pytest.raises(seller.ProviderConnectionError) as error:seller.create({v:'https://example.com/'+v for v in cloud.VIEWS})
+    assert error.value.stage=='submit' and len(calls)==1
+
+
+def test_upload_failure_can_continue_without_an_existing_task_id(client,monkeypatch):
+    import requests
+    _,job,_=imported_job(client);jid=job['id']
+    monkeypatch.setenv('TRIPO_IMAGE_SOURCE','upload')
+    jobs.write_json(jobs.job_path(jid)/'tripo.json',{'status':'queued','provider':'seller','preset':'highest','quota_reserved':True})
+    monkeypatch.setattr(cloud.tripo,'upload',lambda *args:(_ for _ in ()).throw(seller.ProviderConnectionError('upload',requests.ConnectionError())))
+    cloud.run_tripo(jid)
+    public=client.get('/api/job/'+jid).json()['tripo']
+    assert public['stage']=='upload' and public['submission_uncertain'] is False
+    monkeypatch.setattr(cloud.tripo,'preflight',lambda **kw:{'connected':True})
+    monkeypatch.setattr(cloud,'queue',lambda *args:True)
+    assert send(client,'tripo',{'job_id':jid}).status_code==200
+
+
+def test_uncertain_submit_stays_protected_against_duplicate_generation(client,monkeypatch):
+    import requests
+    monkeypatch.setenv('APP_URL','https://dollfit.test')
+    _,job,_=imported_job(client);jid=job['id'];calls=[]
+    jobs.write_json(jobs.job_path(jid)/'tripo.json',{'status':'queued','provider':'seller','preset':'highest'})
+    def create(*args):
+        calls.append(args);raise seller.ProviderConnectionError('submit',requests.ReadTimeout())
+    monkeypatch.setattr(cloud.tripo,'create',create)
+    cloud.run_tripo(jid);cloud.run_tripo(jid)
+    assert len(calls)==1
+    assert client.get('/api/job/'+jid).json()['tripo']['submission_uncertain'] is True
+    assert send(client,'tripo',{'job_id':jid}).status_code==400
+
+
+def test_explicit_provider_rejection_is_not_presented_as_unknown_created_task(client,monkeypatch):
+    monkeypatch.setenv('APP_URL','https://dollfit.test')
+    _,job,_=imported_job(client);jid=job['id']
+    jobs.write_json(jobs.job_path(jid)/'tripo.json',{'status':'queued','provider':'seller','preset':'highest'})
+    monkeypatch.setattr(cloud.tripo,'create',lambda *args:(_ for _ in ()).throw(seller.ProviderRejected('额度不足')))
+    cloud.run_tripo(jid)
+    assert client.get('/api/job/'+jid).json()['tripo']['submission_uncertain'] is False

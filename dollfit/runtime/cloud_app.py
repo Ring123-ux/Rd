@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, ImageOps
 
 from . import auth, tripo_api as tripo, wardrobe_jobs as wardrobe
+from . import tripo_inputs
 from .wardrobe_settings import APP_ROOT, ROOT, redact
 
 PROFILES = ROOT / 'profiles'
@@ -36,6 +37,7 @@ VIEWS = wardrobe.VIEWS
 EXAMPLE = 'bd0228c40529495eaa48e3f614002e64'
 SECURE_COOKIE = bool(os.environ.get('RENDER')) or os.environ.get('APP_URL', '').startswith('https://')
 COOKIE = 'dollfit_session'
+VERSION = '2026.11.17-manual-3d'
 
 
 def fail(message, status=400):
@@ -71,10 +73,13 @@ def job_view(job):
     jid = job['id']
     path = wardrobe.job_path(jid) / 'tripo.json'
     state = wardrobe.read_json(path) if path.exists() else {'status': 'idle'}
-    safe = ('status', 'progress', 'task_id', 'message', 'model_url', 'preset', 'provider', 'face_count', 'actual_model_version')
+    safe = ('status', 'progress', 'task_id', 'message', 'model_url', 'preset', 'provider', 'face_count', 'actual_model_version', 'stage', 'input_source', 'error_kind')
+    safe_state = {k: state[k] for k in safe if k in state}
+    safe_state['submission_uncertain'] = bool(state.get('submission_started') and not state.get('task_id'))
+    safe_state['uploaded_views'] = len(state.get('tokens', {}))
     return {'id': jid, 'status': job['status'], 'prompt': job['user_prompt'], 'view_status': job['view_status'],
             'errors': job['errors'], 'images': {v: f'/media/design/{jid}/{v}_dressed.png' for v in job['results']},
-            'tripo': {k: state[k] for k in safe if k in state}}
+            'tripo': safe_state}
 
 
 def profile_view(profile, user):
@@ -177,18 +182,28 @@ def run_tripo(jid):
         if not state.get('task_id'):
             if state.get('submission_started'):
                 raise ValueError('上次提交结果不确定，请先核对服务商记录并填写任务编号恢复，避免重复扣费。')
-            uploaded = state.get('tokens', {})
-            if provider == 'seller' and time.time() - state.get('uploaded_at', 0) > 25 * 60:
-                uploaded = {}
-            for view in VIEWS:
-                if view not in uploaded:
-                    save(status='uploading', message='上传' + VIEWS[view] + '试穿图')
-                    uploaded[view] = tripo.upload(wardrobe.job_path(jid) / job['results'][view]['file'], provider)
-                    save(tokens=uploaded, uploaded_at=time.time())
-            save(status='submitting', submission_started=True, message='生成请求提交中，请勿重复提交。')
+            source = tripo_inputs.mode(provider)
+            if source == 'signed_links':
+                save(status='uploading', stage='prepare_inputs', input_source=source, message='为本次正、左、背、右试穿图准备短期访问链接')
+                for view in VIEWS:
+                    if not (wardrobe.job_path(jid) / job['results'][view]['file']).is_file():
+                        raise ValueError('本次设计的' + VIEWS[view] + '试穿图文件缺失，请导入已保存四视图。')
+                uploaded = {view: tripo_inputs.create(jid, view) for view in VIEWS}
+                save(tokens=uploaded, uploaded_at=time.time())
+            else:
+                uploaded = state.get('tokens', {}) if state.get('input_source', 'upload') == 'upload' else {}
+                if provider == 'seller' and time.time() - state.get('uploaded_at', 0) > 25 * 60:
+                    uploaded = {}
+                for view in VIEWS:
+                    if view not in uploaded:
+                        save(status='uploading', stage='upload', input_source=source, message='上传' + VIEWS[view] + '试穿图（' + str(len(uploaded)) + '/4）')
+                        uploaded[view] = tripo.upload(wardrobe.job_path(jid) / job['results'][view]['file'], provider)
+                        save(tokens=uploaded, uploaded_at=time.time())
+            save(status='submitting', stage='submit', submission_started=True, message='已准备4张试穿图，正在提交最高质量3D，请勿重复提交。')
             task_id = tripo.create(uploaded, 'highest', provider)
-            save(task_id=task_id, status='queued')
+            save(task_id=task_id, status='queued', stage='query')
         deadline = time.monotonic() + 1800
+        save(stage='query')
         errors = 0
         while time.monotonic() < deadline:
             try:
@@ -207,7 +222,7 @@ def run_tripo(jid):
                 url = remote.get('output', {}).get('model_url')
                 if not url:
                     raise ValueError('任务已完成但未返回模型地址。')
-                save(status='downloading', message='正在保存模型')
+                save(status='downloading', stage='download', message='任务成功，正在保存带贴图模型')
                 tripo.download(url, wardrobe.job_path(jid) / 'tripo_model.glb')
                 save(status='succeeded', progress=100, model_url=f'/media/design/{jid}/tripo_model.glb', message='模型已完成，可在当前页面旋转浏览。')
                 return
@@ -216,7 +231,16 @@ def run_tripo(jid):
             time.sleep(6)
         raise ValueError('查询达到30分钟上限，任务编号已保存，可继续恢复查询。')
     except Exception as error:
-        save(status='needs_attention', message=tripo.safe_error(error))
+        stage = state.get('stage', 'prepare_inputs')
+        if stage == 'submit' and isinstance(error, tripo.seller.ProviderRejected):
+            state['submission_started'] = False
+        if stage == 'download':
+            message = '模型下载暂时中断，任务编号已保存。点击恢复下载，无需重新生成。'
+        else:
+            message = tripo.safe_error(error)
+        save(status='needs_attention', message=message, stage=stage, error_kind=type(error).__name__)
+        print(json.dumps({'event': 'tripo_needs_attention', 'job': jid, 'stage': stage,
+                          'error_kind': type(error).__name__, 'has_task_id': bool(state.get('task_id'))}), flush=True)
 
 
 def run_design(jid):
@@ -298,7 +322,7 @@ async def security(request, call_next):
 
 @app.get('/healthz')
 def health():
-    return {'status': 'ok', 'measurement_model': (APP_ROOT / 'models/bodym.onnx').is_file()}
+    return {'status': 'ok', 'version': VERSION, 'measurement_model': (APP_ROOT / 'models/bodym.onnx').is_file()}
 
 
 @app.get('/api/bootstrap')
@@ -318,7 +342,7 @@ def bootstrap(request: Request):
         'image_configured': bool(os.environ.get('HEJU_API_KEY')), 'tripo_configured': tripo.configured(),
         'tripo_base': tripo.base_url(), 'tripo_provider': tripo.provider_name(), 'quality': 'highest',
         'quality_label': '最高质量 · 150万面' if tripo.provider_name() == 'seller' else '最高质量 · 官方超清档',
-        'ephemeral_storage': is_ephemeral, 'invitation_required': True, 'cloud': True})
+        'ephemeral_storage': is_ephemeral, 'invitation_required': True, 'cloud': True, 'version': VERSION})
     if request.cookies.get('dollfit_guest') != guest:
         response.set_cookie('dollfit_guest', guest, httponly=True, secure=SECURE_COOKIE, samesite='lax', max_age=14 * 86400)
     return response
@@ -358,7 +382,15 @@ def post(path, body, user, request_id):
         if path == 'test-tripo':
             if not user['admin']:
                 return fail('仅管理员可以测试服务连接。', 403)
-            return tripo.preflight(require_balance=False)
+            result = tripo.preflight(require_balance=False)
+            result['input_source'] = tripo_inputs.mode(tripo.provider_name())
+            if body.get('probe_upload'):
+                before = result.get('usage_count')
+                tripo.upload(APP_ROOT / 'examples/front_dressed.png', tripo.provider_name())
+                after = tripo.preflight(require_balance=False)
+                result['upload_probe'] = {'passed': True, 'generation_created': False,
+                                          'usage_before': before, 'usage_after': after.get('usage_count')}
+            return result
         if path == 'profile':
             height = float(body.get('height_cm', 0))
             if not math.isfinite(height) or not 0 < height <= 300 or body.get('gender') not in ('female', 'male'):
@@ -386,6 +418,34 @@ def post(path, body, user, request_id):
                 profile['measurement'] = {'status': 'running'}
                 write_profile(profile)
             return {'started': True}
+        if path == 'import-design':
+            profile = read_profile(body.get('profile_id'), user)
+            if len(profile['jobs']) >= 50:
+                raise ValueError('每份档案最多保存50条设计，请先保存所需结果。')
+            supplied = body.get('views', {})
+            if not isinstance(supplied, dict) or set(supplied) != set(VIEWS):
+                raise ValueError('请为正面、左侧面、背面、右侧面分别提供一张已完成的试穿图。')
+            pictures = {view: image(supplied[view]) for view in VIEWS}
+            digests = [hashlib.sha256(wardrobe.png_bytes(pictures[view])).hexdigest() for view in VIEWS]
+            if len(set(digests)) != 4:
+                raise ValueError('四个角度不能使用同一张图片。')
+            jid = hashlib.sha256((user['id'] + profile['id'] + ''.join(digests)).encode()).hexdigest()[:32]
+            if (wardrobe.job_path(jid) / 'job.json').exists():
+                return job_view(read_job(jid, user))
+            folder = wardrobe.job_path(jid);folder.mkdir(parents=True)
+            for view in VIEWS:pictures[view].save(folder / (view + '_dressed.png'))
+            prompt = '导入已有服装四视图，可直接用于3D生成'
+            job = {'id': jid, 'project_id': profile['project_id'], 'owner_id': user['id'], 'views': list(VIEWS),
+                   'status': 'succeeded', 'user_prompt': prompt, 'instructions': [prompt], 'created_at': time.time(),
+                   'quality': 'imported-original', 'size': 'original', 'height_cm': profile['height_cm'],
+                   'view_status': {view: 'succeeded' for view in VIEWS}, 'errors': {}, 'garment_references': [],
+                   'results': {view: {'file': view + '_dressed.png'} for view in VIEWS},
+                   'view_directions': {'left': 'left', 'right': 'right'}, 'imported': True}
+            wardrobe.write_json(folder / 'job.json', job)
+            project = wardrobe.read_json(wardrobe.PROJECTS / profile['project_id'] / 'project.json')
+            project['jobs'].append(jid);wardrobe.write_json(wardrobe.PROJECTS / profile['project_id'] / 'project.json', project)
+            profile['jobs'].append(jid);write_profile(profile)
+            return job_view(job)
         if path == 'design':
             previous = auth.receipt(user['id'], 'design', request_id)
             if previous:
@@ -542,6 +602,20 @@ def example_file(name: str):
         return fail('文件不存在。', 404)
     return FileResponse(APP_ROOT / 'examples' / name, media_type='model/gltf-binary' if name.endswith('.glb') else 'image/png',
                         headers={'Cache-Control': 'public, max-age=86400'})
+
+
+@app.get('/tripo-input/{jid}/{view}.png')
+def provider_input(jid: str, view: str, request: Request):
+    if not tripo_inputs.valid(jid, view, request.query_params.get('expires'), request.query_params.get('signature', '')):
+        return fail('图片链接无效或已过期。', 403)
+    try:
+        job = wardrobe.read_job(identifier(jid))
+        if view not in job.get('results', {}):raise FileNotFoundError()
+        file = wardrobe.job_path(jid) / (view + '_dressed.png')
+        if not file.is_file():raise FileNotFoundError()
+        return FileResponse(file, media_type='image/png', headers={'Cache-Control': 'private, no-store'})
+    except (ValueError, FileNotFoundError):
+        return fail('试穿图不存在。', 404)
 
 
 @app.get('/media/{kind}/{record}/{name}')

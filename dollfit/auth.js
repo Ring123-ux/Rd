@@ -10,6 +10,7 @@ function resetWorkbench(){
  $('#designs').replaceChildren(el('p','保存娃娃档案后开始设计。','muted'));
  $('#profile-form').reset();$('#design-form').reset();uploadSlots();$('#measurements').replaceChildren();
  $('#reference-preview').replaceChildren();$('#references').value='';
+ $('#import-form').reset();$('#import-dialog').close();$('#import-error').textContent='';
 }
 function accountState(b){
  cloudUser=b.user||null;
