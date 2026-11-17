@@ -1,0 +1,46 @@
+﻿上传整个新包的内容到 Ring123-ux/Rd 仓库根目录，替换旧文件。
+不是把ZIP直接上传成一个文件；应先解压，再上传文件和文件夹。
+
+Rd仓库根目录应该直接有：
+  README.md
+  render.yaml
+  render.production.yaml
+  dollfit/ （完整前后端）
+
+Render 手动创建 Web Service：
+  Root Directory: dollfit
+  Language: Python 3
+  Build Command: pip install -r requirements.txt && python -m deployment.assets restore
+  Start Command: python -m deployment.start
+  Health Check Path: /healthz
+
+Environment 必填/建议填写：
+  APP_SECRET: 点击Generate，至少32字符
+  INVITE_CODE: 自设至少8字符的邀请码，给受邀朋友注册
+  ADMIN_USERNAME: owner
+  ADMIN_PASSWORD: 自设至少12字符的管理员密码
+  HEJU_API_KEY: 你的合聚AI生图密钥原文（不加Bearer）
+  TRIPO_API_KEY: 你购买的3D卖家令牌原文（不加Bearer，不填tcli用户ID）
+  TRIPO_PROVIDER: seller
+  PYTHON_VERSION: 3.12.12
+
+免费试用：
+  DATA_DIR=/tmp/dollfit-data
+  DATA_EPHEMERAL=true
+  账号/照片/设计可能在休眠、重启或部署后丢失。仅供试用。
+
+正式保留用户数据：
+  建议至少1CPU/2GB实例，额外挂持久磁盘到 /var/data
+  DATA_DIR=/var/data/dollfit
+  DATA_EPHEMERAL=false
+  付费实例不等于自动有持久磁盘，必须额外挂盘。
+
+默认每人每天2次设计和2次3D，全站各10次，环境变量可调整。
+所有后续服装都是high/1024x1536，卖家3D固定150万面。
+内置真实最高档实例无需调用API即可同页浏览。
+
+重要：必须完整上传 dollfit/bundled/ 的全部分片和manifest.json。
+每个分片都不超过20MB，浏览器整批失败时请分批上传。
+密钥只填写在Render，不放GitHub，不需要再上传原本机dpapi文件。
+
+详细部署、限制、故障排查：dollfit/README.md

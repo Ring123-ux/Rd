@@ -1,0 +1,2 @@
+# Preserve source and bundled-asset hashes exactly on Windows and Linux.
+* -text

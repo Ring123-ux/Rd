@@ -1,0 +1,29 @@
+# Optional Blueprint for a FREE, EPHEMERAL TEST deployment. Manual setup is documented in dollfit/README.md.
+services:
+  - type: web
+    name: dollfit-preview
+    runtime: python
+    plan: free
+    rootDir: dollfit
+    buildCommand: pip install -r requirements.txt && python -m deployment.assets restore
+    startCommand: python -m deployment.start
+    healthCheckPath: /healthz
+    envVars:
+      - key: APP_SECRET
+        generateValue: true
+      - key: INVITE_CODE
+        sync: false
+      - key: ADMIN_USERNAME
+        value: owner
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: HEJU_API_KEY
+        sync: false
+      - key: TRIPO_API_KEY
+        sync: false
+      - key: TRIPO_PROVIDER
+        value: seller
+      - key: DATA_DIR
+        value: /tmp/dollfit-data
+      - key: DATA_EPHEMERAL
+        value: "true"

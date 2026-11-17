@@ -1,0 +1,7 @@
+{
+  "process_exit_code": 0,
+  "measurement_process_tree_peak_rss_mb": 293.8,
+  "processes_observed": 2,
+  "elapsed_seconds": 1.8,
+  "note": "Windows CPU process-tree benchmark, including venv launcher and child; not a Render/Linux cgroup benchmark. Web-server memory is additional."
+}

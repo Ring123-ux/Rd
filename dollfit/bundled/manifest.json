@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "part_limit_bytes": 20000000,
+  "assets": [
+    {
+      "target": "models/bodym.onnx",
+      "bytes": 200117500,
+      "sha256": "ccf1953a1dc1a89df1aab8a5d8f2204de410c4b7ed6958cc951567a79e799364",
+      "parts": [
+        {
+          "file": "bodym.part01",
+          "bytes": 20000000,
+          "sha256": "635d67e05415b0cd74ba54c8a4a434e3a0c053740e296e13893d9f91800bd824"
+        },
+        {
+          "file": "bodym.part02",
+          "bytes": 20000000,
+          "sha256": "efebe02e36cc5747e34a904f444c5fa8c14a70d4beb2f6cec3ef529f60ebc292"
+        },
+        {
+          "file": "bodym.part03",
+          "bytes": 20000000,
+          "sha256": "7bb7aa20ddf7cc6e465ff7f22cbabac9435f5f105fbdcb12315fa67ddf2adbf1"
+        },
+        {
+          "file": "bodym.part04",
+          "bytes": 20000000,
+          "sha256": "560df0949fe3195b1edc1df19e676e72d4f320fdc8cb79f8924fb38faa76afd0"
+        },
+        {
+          "file": "bodym.part05",
+          "bytes": 20000000,
+          "sha256": "441ab075ce70f087c65b1c98a329c34884c2f2299de5c783f3c56e151b1025fd"
+        },
+        {
+          "file": "bodym.part06",
+          "bytes": 20000000,
+          "sha256": "8301945884c62c1c82979157852e0a0b0ee360d71429c56e0f52f70affa37186"
+        },
+        {
+          "file": "bodym.part07",
+          "bytes": 20000000,
+          "sha256": "f69ad7dc15160b964c804b3813b6a439432dfde9731828eea22e5037082928ab"
+        },
+        {
+          "file": "bodym.part08",
+          "bytes": 20000000,
+          "sha256": "a4f9a074e77cb3864aec143d84e58ef3beadf6d964dc807ca5f567351135dc1c"
+        },
+        {
+          "file": "bodym.part09",
+          "bytes": 20000000,
+          "sha256": "b5ee57cd842ce7c73b15ceef737a3f645d25f860f2537271b162e076499d990d"
+        },
+        {
+          "file": "bodym.part10",
+          "bytes": 20000000,
+          "sha256": "9de7a638d560ad31cf501655261c83a5d0335ecec57b6dc42db3949ff834252b"
+        },
+        {
+          "file": "bodym.part11",
+          "bytes": 117500,
+          "sha256": "6f20ad102e07bee66afe6801d12ecfe0a089d319fd3e24c1117746e027b628ec"
+        }
+      ]
+    },
+    {
+      "target": "examples/model.glb",
+      "bytes": 75478524,
+      "sha256": "9472c31b70c14eb8a0fd42a0dcc0259873fe9816db79791d5ebaca9b33987a6f",
+      "parts": [
+        {
+          "file": "model.part01",
+          "bytes": 20000000,
+          "sha256": "2ee48d0c15946cbd2c9ccd1e0a84c27f8260362d3891a47de35e69254d537129"
+        },
+        {
+          "file": "model.part02",
+          "bytes": 20000000,
+          "sha256": "06cecea451a515aa653a8eab01282714fa49a4884f629a1ca8e1811fb6fc82a3"
+        },
+        {
+          "file": "model.part03",
+          "bytes": 20000000,
+          "sha256": "0595508c54154678426246f944961ab376318475b73da1df3be2154e689cfd6a"
+        },
+        {
+          "file": "model.part04",
+          "bytes": 15478524,
+          "sha256": "08dcdffc32be2668aff2fed93789e81bdf77a2ff47bc37b44d560470e39f0a77"
+        }
+      ]
+    }
+  ]
+}

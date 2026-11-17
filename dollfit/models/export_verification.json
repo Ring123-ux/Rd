@@ -1,0 +1,9 @@
+{
+  "engine": "FP32 ONNX, no quantization",
+  "compared_cases": 8,
+  "measurements_per_case": 13,
+  "max_absolute_difference_cm_at_17cm": 2.0718864721658292e-06,
+  "all_2decimal_values_identical": true,
+  "checkpoint_sha256": "d8961a9ae1e913acc9d59fc51200c01fe4524991e9e08a5a4bd21b22a4f50d26",
+  "onnx_sha256": "ccf1953a1dc1a89df1aab8a5d8f2204de410c4b7ed6958cc951567a79e799364"
+}
