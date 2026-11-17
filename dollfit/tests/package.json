@@ -1,0 +1,7 @@
+{
+  "name": "dollfit-workbench-flow-tests",
+  "private": true,
+  "scripts": {"test": "node --test test_workbench.cjs"},
+  "devDependencies": {"jsdom": "31.0.1"},
+  "engines": {"node": "^22.22.2 || >=24.15.0"}
+}

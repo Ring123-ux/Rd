@@ -5,10 +5,10 @@ const authButton=document.getElementById('account-link');
 const logoutButton=document.getElementById('logout-button');
 function showAccount(){authDialog.showModal()}
 function resetWorkbench(){
- current=null;photos={};references=[];dirty=false;jobSignatures.clear();
+ current=null;profileOwnerId=null;pendingProfileSave=false;photos={};references=[];dirty=false;jobSignatures.clear();
  localStorage.removeItem('dollfit-active-profile');
  $('#designs').replaceChildren(el('p','保存娃娃档案后开始设计。','muted'));
- $('#profile-form').reset();uploadSlots();$('#measurements').replaceChildren();
+ $('#profile-form').reset();$('#design-form').reset();uploadSlots();$('#measurements').replaceChildren();
  $('#reference-preview').replaceChildren();$('#references').value='';
 }
 function accountState(b){
@@ -32,13 +32,18 @@ $('#account-form').onsubmit=async e=>{
  e.preventDefault();const button=$('#account-submit');button.disabled=true;$('#account-error').textContent='';
  try{
   await bootstrap();
-  await api('auth/'+$('#account-mode').value,{username:$('#account-username').value,password:$('#account-password').value,invite_code:$('#invite-code').value});
-  $('#account-password').value='';$('#invite-code').value='';resetWorkbench();
-  const b=await bootstrap();if(b.profiles[0])await loadProfile(b.profiles[0].id);
-  authDialog.close();notify('已进入你的设计工作台。');
+  const result=await api('auth/'+$('#account-mode').value,{username:$('#account-username').value,password:$('#account-password').value,invite_code:$('#invite-code').value});
+  const keepDraft=hasUnsavedDraft()&&(!current||profileOwnerId===result.user.id);
+  const resumeSave=pendingProfileSave&&keepDraft;
+  $('#account-password').value='';$('#invite-code').value='';
+  if(!keepDraft)resetWorkbench();
+  pendingProfileSave=false;
+  const b=await bootstrap();if(!keepDraft&&b.profiles[0])await loadProfile(b.profiles[0].id);
+  authDialog.close();notify(keepDraft?'已登录，你选择的照片和填写内容已保留。':'已进入你的设计工作台。');
+  if(resumeSave)await saveProfile();
  }catch(error){$('#account-error').textContent=error.message}finally{button.disabled=false}
 };
 logoutButton.onclick=()=>action(async()=>{await api('auth/logout',{});resetWorkbench();await bootstrap();notify('已退出登录。')});
 window.addEventListener('dollfit-account-required',showAccount);
 
-(async()=>{try{const b=await bootstrap(),id=localStorage.getItem('dollfit-active-profile');if(id&&b.profiles.some(p=>p.id===id))await loadProfile(id);else if(b.profiles[0])await loadProfile(b.profiles[0].id)}catch(e){notify(e.message,true)}})();
+(async()=>{try{const b=await bootstrap(),id=localStorage.getItem('dollfit-active-profile');if(!hasUnsavedDraft()){if(id&&b.profiles.some(p=>p.id===id))await loadProfile(id);else if(b.profiles[0])await loadProfile(b.profiles[0].id)}}catch(e){notify(e.message,true)}})();

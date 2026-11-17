@@ -30,5 +30,8 @@
     "purchased_3d": true
   },
   "known_provider_credentials_scanned": 3,
-  "secret_findings": 0
+  "secret_findings": 0,
+  "ui_login_save_flow_checks": 10,
+  "live_health_check_url": "https://rd-1-2co1.onrender.com/healthz",
+  "live_admin_login_verified": true
 }
