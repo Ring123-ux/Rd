@@ -115,6 +115,32 @@ function clearOutfit() {
   $('#outfit-details').replaceChildren();
 }
 
+async function modelLoadMessage(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(url, {headers: {Range: 'bytes=0-19'}, cache: 'no-store', signal: controller.signal});
+    if (response.status === 401 || response.status === 403) return '登录状态已失效或无法访问此模型。请重新登录后打开这套衣服。';
+    if (response.status === 404) return '服务器上找不到这份模型文件。重新打开这套衣服，可查看原任务的恢复选项。';
+    if (!response.ok) return '模型文件请求失败（HTTP ' + response.status + '）。可以重试预览。';
+    if (response.status === 206) {
+      const data = new DataView(await response.arrayBuffer());
+      const size = Number(response.headers.get('Content-Range')?.split('/').at(-1));
+      if (data.byteLength < 20 || data.getUint32(0,true) !== 0x46546c67 ||
+          data.getUint32(4,true) !== 2 || (size && data.getUint32(8,true) !== size)) {
+        return '服务器返回的 GLB 文件不完整或格式不正确。';
+      }
+    } else {
+      await response.body?.cancel();
+    }
+    return '模型文件可以访问，但浏览器没能加载完整模型。请重试预览，或下载 GLB 在本地打开。';
+  } catch {
+    return '模型文件连接中断或超时。可以重试预览。';
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function closeOutfit() {
   if ($('#outfit-dialog').open) $('#outfit-dialog').close();
   clearOutfit();
@@ -129,21 +155,19 @@ $('#outfit-dialog').addEventListener('close', () => {
   if (target) target.focus({preventScroll:true});
 });
 
-function modelViewer(job) {
+function modelViewer(job, source=job.tripo.model_url) {
   const box = el('div', undefined, 'outfit-model');
   const viewer = el('model-viewer');
-  viewer.setAttribute('src', job.tripo.model_url);
   viewer.setAttribute('camera-controls', '');
+  viewer.setAttribute('touch-action', 'pan-y');
   viewer.setAttribute('shadow-intensity', '1');
   viewer.setAttribute('alt', '穿着这套衣服的娃娃3D模型');
   viewer.setAttribute('camera-orbit', '0deg 75deg 110%');
+  if (job.images?.front) viewer.setAttribute('poster', job.images.front);
   if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) viewer.setAttribute('auto-rotate', '');
 
   const status = el('p', '正在加载3D模型…', 'muted');
-  viewer.addEventListener('load', () => {status.textContent = '拖动旋转，滚轮或双指缩放。'});
-  viewer.addEventListener('error', () => {
-    status.textContent = '模型加载失败。可下载 GLB 后用本地软件打开。';
-  });
+  status.setAttribute('role', 'status');
   setTimeout(() => {
     if (viewer.isConnected && !customElements.get('model-viewer')) {
       status.textContent = '3D浏览组件未加载，请检查网络后刷新。';
@@ -152,11 +176,13 @@ function modelViewer(job) {
 
   const controls = el('div', undefined, 'model-actions');
   const spin = el('button', viewer.hasAttribute('auto-rotate') ? '暂停旋转' : '自动旋转', 'secondary');
+  spin.disabled = true;
   spin.onclick = () => {
     viewer.toggleAttribute('auto-rotate');
     spin.textContent = viewer.hasAttribute('auto-rotate') ? '暂停旋转' : '自动旋转';
   };
   const reset = el('button', '重置视角', 'secondary');
+  reset.disabled = true;
   reset.onclick = () => {
     viewer.cameraOrbit = '0deg 75deg 110%';
     viewer.cameraTarget = 'auto auto auto';
@@ -165,7 +191,31 @@ function modelViewer(job) {
   const download = el('a', '下载 GLB');
   download.href = job.tripo.model_url;
   download.download = 'DollFit-' + job.id + '.glb';
-  controls.append(spin, reset, download);
+  const retry = el('button', '重试预览', 'secondary');
+  retry.hidden = true;
+  retry.onclick = () => {
+    const fresh = new URL(job.tripo.model_url, location.href);
+    fresh.searchParams.set('preview', Date.now());
+    box.replaceWith(modelViewer(job, fresh.href));
+  };
+  viewer.addEventListener('load', () => {
+    status.textContent = '拖动旋转，滚轮或双指缩放。';
+    spin.disabled = reset.disabled = false;
+    retry.hidden = true;
+  });
+  viewer.addEventListener('error', async event => {
+    spin.disabled = reset.disabled = true;
+    retry.hidden = false;
+    if (event.detail?.type === 'webglcontextlost') {
+      status.textContent = '浏览器的3D渲染已中断。请关闭同一浏览器里的其他3D页面后重试。';
+      return;
+    }
+    status.textContent = '模型未能显示，正在检查文件…';
+    const message = await modelLoadMessage(job.tripo.model_url);
+    if (box.isConnected && !viewer.loaded) status.textContent = message;
+  });
+  viewer.setAttribute('src', source);
+  controls.append(spin, reset, retry, download);
   box.append(viewer, status, controls);
   return box;
 }
@@ -202,12 +252,30 @@ function generateModelPanel(job) {
   if (uncertain) panel.append(el('p', '提交结果未知。请核对服务商记录并填写任务编号，避免重复生成。', 'error-note'), task);
   if (state.task_id) panel.append(el('p', '任务编号 ' + state.task_id, 'muted'));
 
+  let faceCount;
+  if (complete && !active && !uncertain && !state.task_id && state.provider !== 'official' && tripoFaceCounts.length) {
+    const field = el('label', '3D 画质');
+    faceCount = el('select');
+    faceCount.setAttribute('aria-label', '3D 画质');
+    const captions = {500000:'快速', 1000000:'均衡', 1500000:'精细'};
+    for (const value of tripoFaceCounts) {
+      const option = el('option', captions[value]);
+      option.value = value;
+      faceCount.append(option);
+    }
+    faceCount.value = state.requested_face_count || Math.max(...tripoFaceCounts);
+    field.append(faceCount);
+    panel.append(field);
+  }
+
   const button = el('button', active ? (label[state.status] || '正在处理') : title, 'primary wide');
   button.id = 'generate-3d-' + job.id;
   button.disabled = !complete || active;
   button.onclick = () => action(async () => {
     if (uncertain && !task.value.trim()) throw Error('请填写已有任务编号后恢复。');
-    const response = await api('tripo', {job_id: job.id, task_id: uncertain ? task.value.trim() : '', preset: 'highest'});
+    const request = {job_id: job.id, task_id: uncertain ? task.value.trim() : '', preset: 'highest'};
+    if (faceCount) request.face_count = Number(faceCount.value);
+    const response = await api('tripo', request);
     notify(state.task_id || uncertain ? '正在恢复已有3D任务。' : '已加入3D队列，进度会自动更新。');
     const latest = current?.designs.find(item => item.id === job.id);
     if (latest && response.status) {

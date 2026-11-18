@@ -11,8 +11,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 1493,
-    "sha256": "f7ad3748de19ac9b6d14b47c3e5876e5714f23065419e8c6fb1de09e3d6d8e50"
+    "bytes": 1549,
+    "sha256": "16f51866530b5b908aa28c81cbc7ac5b51ca427e0dd46b88f4d4febf35d60a0b"
   },
   {
     "path": "Render填写参数.txt",
@@ -36,18 +36,73 @@
   },
   {
     "path": "dollfit/README.md",
-    "bytes": 13023,
-    "sha256": "0f8c1090747c6ec87bebb99c557afaadcd4935075a1f57a59c3f3ce981da8b02"
+    "bytes": 13208,
+    "sha256": "186caa32640d3925fc1c9fd17f9eed33c96bac47b42455bc5ce90dfe3e5115d9"
   },
   {
     "path": "dollfit/THIRD_PARTY.md",
-    "bytes": 1450,
-    "sha256": "d38a857d7b80bd77ed0828b0f647b9d99c917258ed9a43e08796fecc74ec5b24"
+    "bytes": 1714,
+    "sha256": "d599ea7a9d3f37e617470692ccdc830c0c7e42dcc63706586a67d086159f490e"
   },
   {
     "path": "dollfit/app.js",
     "bytes": 5118,
     "sha256": "e5064eeef5b4e726d0811a813638cc7870ae078584a67cd1df7e6ebd22db2699"
+  },
+  {
+    "path": "dollfit/assets/3d/basis/basis_transcoder.js",
+    "bytes": 57529,
+    "sha256": "8478b5b6d6b74e7d3082b89f6417321d8d1dc0307f2b30d4484bb11b441696a1"
+  },
+  {
+    "path": "dollfit/assets/3d/basis/basis_transcoder.wasm",
+    "bytes": 527333,
+    "sha256": "6cf17dc889352c42e9acf8897107978d127005fe3386c36a0e3845e27967630a"
+  },
+  {
+    "path": "dollfit/assets/3d/draco/draco_decoder.js",
+    "bytes": 512465,
+    "sha256": "8625489da79a805f4f2a7d511c3e52d8b4085608a9d2a4d5f4f9de5db0aea04f"
+  },
+  {
+    "path": "dollfit/assets/3d/draco/draco_decoder.wasm",
+    "bytes": 192420,
+    "sha256": "a680d927bed9cb864ddbd63521868891af2bfbe755092761b4837487618df8ac"
+  },
+  {
+    "path": "dollfit/assets/3d/draco/draco_wasm_wrapper.js",
+    "bytes": 58456,
+    "sha256": "8bb2952d2ba7d67e1414f8df819410cb0434a666be53f671fff75f68843d76f6"
+  },
+  {
+    "path": "dollfit/assets/3d/load-model-viewer.js",
+    "bytes": 288,
+    "sha256": "255d7610944065c66bb96e1de90392a5d6b3ab52def4b9a5d9af8cb2bd0eaec2"
+  },
+  {
+    "path": "dollfit/assets/3d/meshopt_decoder.js",
+    "bytes": 25234,
+    "sha256": "2cc4d9d42473e2243c3d2cf9e6b66ec778fd1fa0fa60ed81b2c9f57434133802"
+  },
+  {
+    "path": "dollfit/assets/3d/meshoptimizer-LICENSE.txt",
+    "bytes": 1079,
+    "sha256": "d1bc307ff896c7fc65e3ff4823cc478194f7a5bc6436f99534ebede4d9e2017a"
+  },
+  {
+    "path": "dollfit/assets/3d/model-viewer-LICENSE.txt",
+    "bytes": 11358,
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "path": "dollfit/assets/3d/model-viewer.min.js",
+    "bytes": 955556,
+    "sha256": "774edda21e1be2a0934e460ca5943af1fe3f88da130a9f98bd6a9d611576cacf"
+  },
+  {
+    "path": "dollfit/assets/3d/three-LICENSE.txt",
+    "bytes": 1081,
+    "sha256": "4c40a1ef62450b857c3b2aaf294936304cd552d965fbcd9d32d4c5bcf4ba4454"
   },
   {
     "path": "dollfit/assets/atelier.png",
@@ -256,8 +311,13 @@
   },
   {
     "path": "dollfit/index.html",
-    "bytes": 7744,
-    "sha256": "2e66299f842a6fc33a1fa6e1f171e96c34e2079f090184122f5e60dd19923bdc"
+    "bytes": 2162,
+    "sha256": "c596f3562566066cc35c0d40b9b6de568aafb594d5175f572b3ae2ca35b158d1"
+  },
+  {
+    "path": "dollfit/landing.css",
+    "bytes": 2729,
+    "sha256": "d7d1ac65842393ef2f6de8a1c9b3c907eae7777c10285493c5ba329a82594676"
   },
   {
     "path": "dollfit/model.js",
@@ -291,8 +351,8 @@
   },
   {
     "path": "dollfit/notebook.js",
-    "bytes": 775,
-    "sha256": "f8b31358c15d259bf7fb7e81dcea01f6e5b0c30719f2b2941fa4603944d7a72f"
+    "bytes": 934,
+    "sha256": "0ac26e9d68463d383065cf71dec0cd0952b855d25893cdc5a6623aa980f744ab"
   },
   {
     "path": "dollfit/requirements-lock.txt",
@@ -316,8 +376,8 @@
   },
   {
     "path": "dollfit/runtime/cloud_app.py",
-    "bytes": 35980,
-    "sha256": "5f380871c0f237ae50d229269afbfd8d1f840c44d4fb3356922a3cea73cfd852"
+    "bytes": 37141,
+    "sha256": "d492d59da1744e7de130738533331250d2f6c918205e7867d72d120ab04e55d0"
   },
   {
     "path": "dollfit/runtime/cloud_measure.py",
@@ -331,8 +391,8 @@
   },
   {
     "path": "dollfit/runtime/tripo_api.py",
-    "bytes": 6624,
-    "sha256": "a68b04af8adaba681add777812503537bd7a71716f8bb13385b6c52ecc7dc9c8"
+    "bytes": 6713,
+    "sha256": "5c20af93e479d05095ca3cac1a988fb8b0c78a51f2262fa929a76e7f375b6cef"
   },
   {
     "path": "dollfit/runtime/tripo_inputs.py",
@@ -341,8 +401,8 @@
   },
   {
     "path": "dollfit/runtime/tripo_seller_api.py",
-    "bytes": 6794,
-    "sha256": "157881fa4279c0ae488af521250289ab9dd723b370345acd76e1472f76ec9b2d"
+    "bytes": 7085,
+    "sha256": "6ee5b98eb6bd164c36ded122866a964188798bea33211db04175f07567671b05"
   },
   {
     "path": "dollfit/runtime/wardrobe_api.py",
@@ -371,18 +431,18 @@
   },
   {
     "path": "dollfit/tests/test_cloud.py",
-    "bytes": 22855,
-    "sha256": "2bddab1846011b0ca66f665fd4bb0e0da69473929f2a05273c6812e52c26d097"
+    "bytes": 23714,
+    "sha256": "6662243a5458ea5a58ec6aa9044de1315f687ef952c154ffdb0fa7580771a34f"
   },
   {
     "path": "dollfit/tests/test_workbench.cjs",
-    "bytes": 19341,
-    "sha256": "289f47510157a03ab21c3a3e1d5faa8a16223279a9f0ae2c5ee00c6112e03a38"
+    "bytes": 20626,
+    "sha256": "e4929e6671095cdbeeeb727cf6e48caef7783df1ac965359cfb889c023a88bca"
   },
   {
     "path": "dollfit/viewer.html",
-    "bytes": 3804,
-    "sha256": "1f1221ef4a5fe7940877775f84f0659941ec936e7d3fb677bc3bace43d9cafb3"
+    "bytes": 3765,
+    "sha256": "fb3d49e03ca5c9644eea2c6bac304ea62df483806fdd7d377c735951ec46ac80"
   },
   {
     "path": "dollfit/viewer.js",
@@ -396,8 +456,8 @@
   },
   {
     "path": "dollfit/wardrobe.js",
-    "bytes": 12183,
-    "sha256": "6f60c835b955c6c24ec100162a639abb6abe1615ed2bcd83c8b1c6197fda852a"
+    "bytes": 15343,
+    "sha256": "2b9f5f6502bf382c13e09bdce4813775552c39b180f5a10d019c812e31d3dfbe"
   },
   {
     "path": "dollfit/workbench.css",
@@ -406,13 +466,13 @@
   },
   {
     "path": "dollfit/workbench.html",
-    "bytes": 10051,
-    "sha256": "1fb368b54199ab1a0f9f4a94babe11c1fe8986a0c0732a979dd908267fc3113d"
+    "bytes": 10012,
+    "sha256": "c160a67dc39859978ac7d99aff667c46be007747625e5cd097ce6b4557156472"
   },
   {
     "path": "dollfit/workbench.js",
-    "bytes": 13637,
-    "sha256": "586d41a65711e6e991c7467400ba0b3283b8e0e1d76332ad1fef32c7d09ec7ed"
+    "bytes": 13702,
+    "sha256": "5a898ec70849e2665ecd1a773c0863cc1e02fd08346d332c81275d15ecad3e64"
   },
   {
     "path": "render.production.yaml",
@@ -426,7 +486,7 @@
   },
   {
     "path": "验证报告.json",
-    "bytes": 2476,
-    "sha256": "698998830a113fa68e488282c5b1c968cf64bcb1ee328dd24a6bda37f2375ce6"
+    "bytes": 2880,
+    "sha256": "8ef16ad1accbfbd174f8ef05f7f94a2c5f45fc5dc84185aaced91a106a4a4b2a"
   }
 ]

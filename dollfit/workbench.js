@@ -2,6 +2,7 @@
 const $=s=>document.querySelector(s), VIEWS={front:'正面',left:'左侧面',back:'背面',right:'右侧面'};
 var cloudUser=null;
 let token='',current=null,photos={},references=[],dirty=false,busy=false;
+let tripoFaceCounts=[];
 let pendingProfileSave=false,profileOwnerId=null,profileDraftId=null,bootstrapRequest=null;
 const profileDialog=$('#profile-dialog');
 const label={pending:'等待生成',running:'正在生成',succeeded:'已完成',failed:'生成失败',queued:'排队中',partial_failure:'部分角度未完成',idle:'尚未开始',uploading:'上传图片',submitting:'提交任务',success:'生成成功',downloading:'保存模型',needs_attention:'需要处理',cancelled:'已取消'};
@@ -69,7 +70,7 @@ function useProfile(profile,{keepDraft=false}={}){
 async function loadProfile(id,options){
  useProfile(await api('profile/'+id),options);
 }
-async function bootstrap(){if(bootstrapRequest)return bootstrapRequest;bootstrapRequest=(async()=>{const b=await api('bootstrap');token=b.token;if(typeof accountState==='function')accountState(b);$('#tripo-base').value=b.tripo_base;const selector=$('#saved-profiles');selector.replaceChildren(el('option','新建娃娃档案'));selector.firstChild.value='';for(const p of b.profiles){const option=el('option',p.name);option.value=p.id;selector.append(option)}selector.value=profileDraftId||'';$('#api-status').textContent='合聚生图：'+(b.image_configured?'已配置':'尚未配置')+' · Tripo：'+(b.tripo_configured?'已配置':'尚未配置');return b})();try{return await bootstrapRequest}finally{bootstrapRequest=null}}
+async function bootstrap(){if(bootstrapRequest)return bootstrapRequest;bootstrapRequest=(async()=>{const b=await api('bootstrap');token=b.token;tripoFaceCounts=b.tripo_face_counts||[];if(typeof accountState==='function')accountState(b);$('#tripo-base').value=b.tripo_base;const selector=$('#saved-profiles');selector.replaceChildren(el('option','新建娃娃档案'));selector.firstChild.value='';for(const p of b.profiles){const option=el('option',p.name);option.value=p.id;selector.append(option)}selector.value=profileDraftId||'';$('#api-status').textContent='合聚生图：'+(b.image_configured?'已配置':'尚未配置')+' · Tripo：'+(b.tripo_configured?'已配置':'尚未配置');return b})();try{return await bootstrapRequest}finally{bootstrapRequest=null}}
 async function refresh(){
  const previous=current;
  if(!previous)return;

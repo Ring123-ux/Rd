@@ -24,7 +24,7 @@ async function page(options={}){
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};
  w.HTMLDialogElement.prototype.close=function(){if(!this.open)return;this.open=false;this.dispatchEvent(new w.Event('close'))};
  if(options.noRandomUUID)Object.defineProperty(w.crypto,'randomUUID',{value:undefined,configurable:true});
- function bootstrap(){return {token:'test-csrf',user:state.user,profiles:state.user?state.profiles.map(p=>({id:p.id,name:p.name})):[],tripo_base:'http://47.120.44.134/tripo3d',quality_label:'最高质量 · 150万面',image_configured:true,tripo_configured:true,ephemeral_storage:false}}
+ function bootstrap(){return {token:'test-csrf',user:state.user,profiles:state.user?state.profiles.map(p=>({id:p.id,name:p.name})):[],tripo_base:'http://47.120.44.134/tripo3d',tripo_face_counts:[500000,1000000,1500000],image_configured:true,tripo_configured:true,ephemeral_storage:false}}
  w.fetch=async (url,init={})=>{
   const endpoint=url.replace('/api/',''),body=init.body?JSON.parse(init.body):undefined;
   calls.push({endpoint,body,headers:init.headers});let status=200,data;
@@ -171,18 +171,23 @@ test('connection failures do not silently lock Save and are shown inside login',
  }finally{p.dom.window.close()}
 });
 
-test('four dressed views wait for an explicit click and use their own job at maximum quality',async()=>{
+test('the selected 3D quality is sent once for the current outfit',async()=>{
  const job=makeJob(),profile=makeProfile();profile.designs=[job];
  const p=await page({user:USER,profiles:[profile]});try{
   await p.openOutfit(job.id);
   assert.equal(p.calls.filter(c=>c.endpoint==='tripo').length,0);
   const previews=[...p.w.document.querySelectorAll('.outfit-angles img')];
   assert.deepEqual(previews.map(img=>img.getAttribute('src')),Object.values(job.images));
+  const quality=p.$('.wardrobe-3d select');
+  assert.deepEqual(Array.from(quality.options, item=>item.textContent), ['快速','均衡','精细']);
+  assert.equal(quality.value,'1500000');
+  quality.value='500000';
   const button=p.$('#generate-3d-'+job.id);assert.equal(button.disabled,false);
   button.click();button.click();
   await until(()=>p.$('#generate-3d-'+job.id).disabled);
   const submissions=p.calls.filter(c=>c.endpoint==='tripo');assert.equal(submissions.length,1);
   assert.equal(submissions[0].body.job_id,job.id);assert.equal(submissions[0].body.preset,'highest');
+  assert.equal(submissions[0].body.face_count,500000);
   assert.equal(p.calls.filter(c=>c.endpoint==='design').length,0);
  }finally{p.dom.window.close()}
 });
@@ -269,6 +274,25 @@ test('a saved outfit reopens all four views and displays the same stored GLB on 
   assert.equal(p.$('model-viewer').getAttribute('src'),job.tripo.model_url);
   assert.equal(p.calls.filter(c=>c.endpoint==='tripo').length,0);
   p.$('#outfit-close').click();assert.equal(p.$('#outfit-dialog').open,false);
+ }finally{p.dom.window.close()}
+});
+
+test('a missing saved GLB shows the cause and reloads only the saved file on retry',async()=>{
+ const job=makeJob({status:'succeeded',model_url:'/media/design/existing/tripo_model.glb'});
+ const profile=makeProfile();profile.designs=[job];
+ const p=await page({user:USER,profiles:[profile]});try{
+  const oldFetch=p.w.fetch;
+  p.w.fetch=(url,options)=>url===job.tripo.model_url ?
+   Promise.resolve({status:404,ok:false}) : oldFetch(url,options);
+  await p.openOutfit(job.id);
+  p.$('.wardrobe-3d button').click();
+  const viewer=p.$('model-viewer');
+  viewer.dispatchEvent(new p.w.CustomEvent('error',{detail:{type:'loadfailure'}}));
+  await until(()=>p.$('.outfit-model p').textContent.includes('找不到'));
+  const retry=[...p.w.document.querySelectorAll('.model-actions button')].find(button=>button.textContent==='重试预览');
+  retry.click();
+  assert.match(p.$('model-viewer').getAttribute('src'),/tripo_model.glb\?preview=/);
+  assert.equal(p.calls.filter(c=>c.endpoint==='tripo').length,0);
  }finally{p.dom.window.close()}
 });
 

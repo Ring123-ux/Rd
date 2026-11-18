@@ -85,8 +85,9 @@ def upload(path,provider=None):
         result=request('POST', '/files', files={'file':(path.name,file,'image/png')})
     return result['file_token']
 
-def create(tokens,preset='highest',provider=None):
-    if (provider or provider_name())=='seller':return seller.create(tokens)
+def create(tokens,preset='highest',provider=None,*,face_count=None):
+    if (provider or provider_name())=='seller':
+        return seller.create(tokens, seller.MAX_FACE_COUNT if face_count is None else face_count)
     if set(tokens)!={'front','left','back','right'}:
         raise ValueError('请先完成同一套服装的四视图，再生成3D。')
     if preset not in PRESETS: raise ValueError('请选择有效的3D质量档位。')

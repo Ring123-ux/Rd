@@ -11,6 +11,7 @@ from .wardrobe_api import _public_url
 BASE='http://47.120.44.134'
 SECRET=ROOT/'config'/'tripo_purchased_credentials.dpapi'
 MAX_FACE_COUNT=1500000
+FACE_COUNTS = (500000, 1000000, MAX_FACE_COUNT)
 
 
 class ProviderConnectionError(ValueError):
@@ -89,14 +90,21 @@ def upload(path):
     _public_url(url)
     return url
 
-def create(urls):
-    if set(urls)!={'front','left','back','right'}:raise ValueError('最高质量3D需要四张同款试穿图。')
+def validate_face_count(value):
+    if type(value) is not int or value not in FACE_COUNTS:
+        raise ValueError('3D面数请选择50万、100万或150万。')
+    return value
+
+
+def create(urls, face_count=MAX_FACE_COUNT):
+    if set(urls)!={'front','left','back','right'}:raise ValueError('生成3D需要四张同款试穿图。')
+    validate_face_count(face_count)
     for url in urls.values():_public_url(url)
     order=['front','back','left','right']
     body=request('POST','/tripo3d/generate',json={
         'imageList':[urls[v] for v in order],
         'imageTagList':['frontView','rearView','leftView','rightView'],
-        'faceCount':MAX_FACE_COUNT})
+        'faceCount':face_count})
     task=body.get('creationsId') or body.get('data',{}).get('creationsId')
     if not isinstance(task,str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,160}',task):
         raise ValueError('服务商未返回有效任务编号，请先核对生成记录，避免重复提交。')

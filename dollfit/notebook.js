@@ -14,6 +14,8 @@ function openPanel(entry) {
 }
 
 atelierDialog.querySelector('.close').onclick = () => atelierDialog.close();
+document.getElementById('launch-atelier').onclick = () => openPanel('studio');
+document.getElementById('launch-profile').onclick = () => openPanel('profile');
 window.addEventListener('message', event => {
   if (event.origin === location.origin && event.source === atelierFrame.contentWindow &&
       event.data?.type === 'dollfit:close') atelierDialog.close();

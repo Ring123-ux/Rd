@@ -177,13 +177,15 @@ def test_quotas_are_atomic_and_duplicate_requests_do_not_spend_twice(monkeypatch
         auth.reserve(user, 'design', 'test-idempotent-3', 'resource-4')
 
 
-def test_seller_payload_has_correct_angles_and_maximum_faces(monkeypatch):
+@pytest.mark.parametrize('count', [None, 500000, 1000000, 1500000])
+def test_seller_payload_has_correct_angles_and_selected_faces(monkeypatch,count):
     calls = []
     monkeypatch.setattr(seller, '_public_url', lambda x: x)
     monkeypatch.setattr(seller, 'request', lambda *args, **kwargs: calls.append((args, kwargs)) or {'creationsId': 'task-valid-12345'})
-    seller.create({v: 'https://example.com/' + v for v in cloud.VIEWS})
+    options = {} if count is None else {'face_count': count}
+    seller.create({v: 'https://example.com/' + v for v in cloud.VIEWS}, **options)
     body = calls[0][1]['json']
-    assert body['faceCount'] == 1500000
+    assert body['faceCount'] == (count or 1500000)
     assert body['imageTagList'] == ['frontView', 'rearView', 'leftView', 'rightView']
     assert [url.rsplit('/', 1)[1] for url in body['imageList']] == ['front', 'back', 'left', 'right']
 
@@ -229,8 +231,8 @@ def test_full_design_to_3d_chain_uses_real_files_and_no_extra_paid_post(client, 
         return Path(paths[0]).read_bytes(), {'model': 'fake-image-model', 'provider': 'test'}
     monkeypatch.setattr(jobs, 'edit_images', edit)
     monkeypatch.setattr(cloud.tripo, 'upload', lambda path, provider: 'https://example.com/' + path.name)
-    def create(tokens, quality, provider):
-        model_calls.append((tokens, quality, provider))
+    def create(tokens, quality, provider, *, face_count):
+        model_calls.append((tokens, quality, provider, face_count))
         return 'task-test-123456789'
     monkeypatch.setattr(cloud.tripo, 'create', create)
     monkeypatch.setattr(cloud.tripo, 'query', lambda *args: {'status': 'success', 'progress': 100, 'face_count': 1500000,
@@ -247,7 +249,10 @@ def test_full_design_to_3d_chain_uses_real_files_and_no_extra_paid_post(client, 
     assert client.get(result['cover_url']).headers['content-type'] == 'image/jpeg'
     assert client.get('/api/profile/' + p['id']).json()['designs'][0]['id'] == jid
     assert not model_calls
-    assert send(client, 'tripo', {'job_id': jid}).status_code == 200
+    assert send(client, 'tripo', {'job_id': jid, 'face_count': 50000}).status_code == 400
+    request = send(client, 'tripo', {'job_id': jid, 'face_count': 1000000})
+    assert request.status_code == 200
+    assert request.json()['requested_face_count'] == 1000000
     cloud.run_tripo(jid)
     result = client.get('/api/job/' + jid).json()
     assert result['tripo']['status'] == 'succeeded'
@@ -255,6 +260,7 @@ def test_full_design_to_3d_chain_uses_real_files_and_no_extra_paid_post(client, 
     assert len(image_calls) == 4 and len(model_calls) == 1
     assert all(call[2:] == ('medium', '1024x1536') for call in image_calls)
     assert model_calls[0][1] == 'highest'
+    assert model_calls[0][3] == 1000000
     assert '左侧面：鼻尖' in image_calls[1][1] and '右侧面：鼻尖' in image_calls[3][1]
     for index, view in enumerate(cloud.VIEWS):
         paths, prompt, _, _ = image_calls[index]
@@ -269,6 +275,13 @@ def test_full_design_to_3d_chain_uses_real_files_and_no_extra_paid_post(client, 
         assert another.get('/api/job/' + jid).status_code == 404
         assert another.get(result['tripo']['model_url']).status_code == 404
         assert another.get(result['cover_url']).status_code == 404
+    (jobs.job_path(jid) / 'tripo_model.glb').unlink()
+    missing = client.get('/api/job/' + jid).json()['tripo']
+    assert missing['status'] == 'needs_attention' and 'model_url' not in missing
+    assert send(client, 'tripo', {'job_id': jid, 'face_count': 500000}).json()['requested_face_count'] == 1000000
+    cloud.run_tripo(jid)
+    assert len(model_calls) == 1
+    assert client.get(result['tripo']['model_url']).status_code == 200
 
 
 def test_real_measurement_subprocess_returns_all_13_and_scales_with_height(client):

@@ -37,7 +37,7 @@ VIEWS = wardrobe.VIEWS
 EXAMPLE = 'bd0228c40529495eaa48e3f614002e64'
 SECURE_COOKIE = bool(os.environ.get('RENDER')) or os.environ.get('APP_URL', '').startswith('https://')
 COOKIE = 'dollfit_session'
-VERSION = '2026.11.18-compact-wardrobe'
+VERSION = '2026.11.18-single-page-model'
 MEASUREMENT_INPUTS = ('project_id', 'height_cm', 'gender')
 
 
@@ -74,10 +74,14 @@ def job_view(job):
     jid = job['id']
     path = wardrobe.job_path(jid) / 'tripo.json'
     state = wardrobe.read_json(path) if path.exists() else {'status': 'idle'}
-    safe = ('status', 'progress', 'task_id', 'message', 'model_url', 'preset', 'provider', 'face_count', 'actual_model_version', 'stage', 'input_source', 'error_kind')
+    safe = ('status', 'progress', 'task_id', 'message', 'model_url', 'preset', 'provider', 'face_count', 'requested_face_count',
+            'actual_model_version', 'stage', 'input_source', 'error_kind')
     safe_state = {k: state[k] for k in safe if k in state}
     safe_state['submission_uncertain'] = bool(state.get('submission_started') and not state.get('task_id'))
     safe_state['uploaded_views'] = len(state.get('tokens', {}))
+    if safe_state.get('model_url') and not path.with_name('tripo_model.glb').is_file():
+        safe_state.pop('model_url')
+        safe_state.update(status='needs_attention', message='已保存的模型文件找不到。可用原任务编号重新取回。')
     return {'id': jid, 'status': job['status'], 'prompt': job['user_prompt'], 'view_status': job['view_status'],
             'name': job.get('outfit_name', ''), 'quality': job.get('quality', 'high'),
             'created_at': job.get('created_at'),
@@ -204,8 +208,9 @@ def run_tripo(jid):
                         save(status='uploading', stage='upload', input_source=source, message='上传' + VIEWS[view] + '试穿图（' + str(len(uploaded)) + '/4）')
                         uploaded[view] = tripo.upload(wardrobe.job_path(jid) / job['results'][view]['file'], provider)
                         save(tokens=uploaded, uploaded_at=time.time())
-            save(status='submitting', stage='submit', submission_started=True, message='已准备4张试穿图，正在提交最高质量3D，请勿重复提交。')
-            task_id = tripo.create(uploaded, 'highest', provider)
+            face_option = {'face_count': state['requested_face_count']} if provider == 'seller' and 'requested_face_count' in state else {}
+            save(status='submitting', stage='submit', submission_started=True, message='四张试穿图已准备好，正在提交3D任务。')
+            task_id = tripo.create(uploaded, 'highest', provider, **face_option)
             save(task_id=task_id, status='queued', stage='query')
         deadline = time.monotonic() + 1800
         save(stage='query')
@@ -221,7 +226,7 @@ def run_tripo(jid):
                 time.sleep(8)
                 continue
             status = remote.get('status', 'unknown')
-            save(status=status, progress=remote.get('progress', 0), message='正在生成最高质量模型',
+            save(status=status, progress=remote.get('progress', 0), message='正在生成3D模型',
                  face_count=remote.get('face_count'), actual_model_version=remote.get('actual_model_version'))
             if status == 'success':
                 url = remote.get('output', {}).get('model_url')
@@ -351,6 +356,7 @@ def bootstrap(request: Request):
         'profiles': sorted(profiles, key=lambda p: p['created_at'], reverse=True),
         'image_configured': bool(os.environ.get('HEJU_API_KEY')), 'tripo_configured': tripo.configured(),
         'tripo_base': tripo.base_url(), 'tripo_provider': tripo.provider_name(), 'quality': 'highest',
+        'tripo_face_counts': tripo.seller.FACE_COUNTS if tripo.provider_name() == 'seller' else [],
         'quality_label': '最高质量 · 150万面' if tripo.provider_name() == 'seller' else '最高质量 · 官方超清档',
         'ephemeral_storage': is_ephemeral, 'invitation_required': True, 'cloud': True, 'version': VERSION})
     if request.cookies.get('dollfit_guest') != guest:
@@ -549,10 +555,11 @@ def post(path, body, user, request_id):
             job = read_job(body.get('job_id'), user)
             jid = job['id']
             if set(job['results']) != set(VIEWS):
-                raise ValueError('最高质量3D需要四张同款服装试穿图。')
+                raise ValueError('生成3D需要四张同款服装试穿图。')
             state_path = wardrobe.job_path(jid) / 'tripo.json'
             state = wardrobe.read_json(state_path) if state_path.exists() else {'preset': 'highest', 'provider': tripo.provider_name(), 'progress': 0}
-            if state.get('status') == 'succeeded' or 'tripo:' + jid in ACTIVE or 'design:' + jid in ACTIVE:
+            model_saved = state.get('status') == 'succeeded' and state_path.with_name('tripo_model.glb').is_file()
+            if model_saved or 'tripo:' + jid in ACTIVE or 'design:' + jid in ACTIVE:
                 return job_view(job)['tripo']
             if len(ACTIVE) >= 20:
                 raise ValueError('任务队列已满，请稍后再试。')
@@ -572,11 +579,18 @@ def post(path, body, user, request_id):
             if not state.get('task_id'):
                 if state.get('submission_started'):
                     raise ValueError('提交结果不确定，请从服务商记录找回任务编号，避免重复扣费。')
+                if state['provider'] == 'seller':
+                    previous_count = state.get('requested_face_count', tripo.seller.MAX_FACE_COUNT)
+                    state['requested_face_count'] = tripo.seller.validate_face_count(body.get('face_count', previous_count))
+                elif 'face_count' in body:
+                    raise ValueError('当前3D接口没有开启面数选择。')
                 tripo.preflight()
                 if not state.get('quota_reserved'):
                     auth.reserve(user['id'], '3d', request_id, jid)
                     state['quota_reserved'] = True
             state.update(status='queued', preset='highest', auto_requested=False)
+            if not model_saved:
+                state.pop('model_url', None)
             wardrobe.write_json(state_path, state)
             queue('tripo:' + jid, lambda: run_tripo(jid))
             return job_view(job)['tripo']
@@ -681,11 +695,11 @@ def media_file(kind: str, record: str, name: str, request: Request):
 @app.get('/{path:path}')
 def static_file(path: str):
     target = (APP_ROOT / (path or 'index.html')).resolve()
-    if not target.is_relative_to(APP_ROOT) or target.suffix.lower() not in ('.html', '.css', '.js', '.png', '.jpg', '.webp', '.svg', '.ttf', '.woff2'):
+    if not target.is_relative_to(APP_ROOT) or target.suffix.lower() not in ('.html', '.css', '.js', '.png', '.jpg', '.webp', '.svg', '.ttf', '.woff2', '.wasm'):
         return fail('页面不存在。', 404)
     # Only web roots and public assets, never deployment code, records, or hidden files.
     if len(target.relative_to(APP_ROOT).parts) > 1 and target.relative_to(APP_ROOT).parts[0] != 'assets':
         return fail('页面不存在。', 404)
     if not target.is_file():
         return fail('页面不存在。', 404)
-    return FileResponse(target)
+    return FileResponse(target, media_type='application/wasm' if target.suffix == '.wasm' else None)
