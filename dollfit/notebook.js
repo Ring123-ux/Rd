@@ -5,7 +5,6 @@ const atelierFrame = document.getElementById('atelier-frame');
 
 function openPanel(entry) {
   const profile = entry === 'profile';
-  document.getElementById('home-atelier-title').textContent = profile ? '新建娃娃档案' : '娃娃衣柜';
   if (atelierFrame.getAttribute('src')) {
     atelierFrame.contentWindow.postMessage({type: 'dollfit:entry', entry}, location.origin);
   } else {

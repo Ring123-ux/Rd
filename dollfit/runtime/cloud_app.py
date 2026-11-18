@@ -37,7 +37,8 @@ VIEWS = wardrobe.VIEWS
 EXAMPLE = 'bd0228c40529495eaa48e3f614002e64'
 SECURE_COOKIE = bool(os.environ.get('RENDER')) or os.environ.get('APP_URL', '').startswith('https://')
 COOKIE = 'dollfit_session'
-VERSION = '2026.11.18-wardrobe'
+VERSION = '2026.11.18-compact-wardrobe'
+MEASUREMENT_INPUTS = ('project_id', 'height_cm', 'gender')
 
 
 def fail(message, status=400):
@@ -168,9 +169,10 @@ def measure(pid, owner):
     finally:
         source.unlink(missing_ok=True)
     with LOCK:
-        profile = read_profile(pid, user)
-        profile['measurement'] = result
-        write_profile(profile)
+        latest = read_profile(pid, user)
+        if all(latest[key] == profile[key] for key in MEASUREMENT_INPUTS):
+            latest['measurement'] = result
+            write_profile(latest)
 
 
 def run_tripo(jid):
@@ -403,21 +405,33 @@ def post(path, body, user, request_id):
             height = float(body.get('height_cm', 0))
             if not math.isfinite(height) or not 0 < height <= 300 or body.get('gender') not in ('female', 'male'):
                 raise ValueError('请填写有效身高和模型性别分类。')
-            if sum(1 for x in PROFILES.glob('*/profile.json') if wardrobe.read_json(x).get('owner_id') == user['id']) >= 50:
+            editing = body.get('profile_id')
+            source = editing or body.get('source_id')
+            previous = read_profile(source, user) if source else None
+            if not editing and sum(1 for x in PROFILES.glob('*/profile.json') if wardrobe.read_json(x).get('owner_id') == user['id']) >= 50:
                 raise ValueError('每个账户最多保存50份档案。')
-            pictures = {}
-            if body.get('source_id'):
-                previous = read_profile(body['source_id'], user)
-                for view in previous['views']:
-                    with Image.open(wardrobe.PROJECTS / previous['project_id'] / (view + '.png')) as original:
-                        pictures[view] = original.copy()
-            pictures.update({v: image(value) for v, value in body.get('views', {}).items() if v in VIEWS and value})
-            project = wardrobe.ensure_project(pictures, user['id'])
-            project['owner_id'] = user['id']
-            wardrobe.write_json(wardrobe.PROJECTS / project['id'] / 'project.json', project)
-            profile = {'id': uuid.uuid4().hex, 'owner_id': user['id'], 'name': str(body.get('name', '我的娃娃'))[:40],
-                       'height_cm': height, 'gender': body['gender'], 'notes': str(body.get('notes', ''))[:1000],
-                       'project_id': project['id'], 'views': project['views'], 'created_at': time.time(), 'jobs': [], 'measurement': {'status': 'idle'}}
+            pictures = {view: image(value) for view, value in body.get('views', {}).items() if view in VIEWS and value}
+            if previous and not pictures:
+                project_id, views = previous['project_id'], previous['views']
+            else:
+                if previous:
+                    for view in previous['views']:
+                        if view not in pictures:
+                            with Image.open(wardrobe.PROJECTS / previous['project_id'] / (view + '.png')) as original:
+                                pictures[view] = original.copy()
+                project = wardrobe.ensure_project(pictures, user['id'])
+                project['owner_id'] = user['id']
+                project_id, views = project['id'], project['views']
+                wardrobe.write_json(wardrobe.PROJECTS / project_id / 'project.json', project)
+            profile = dict(previous) if editing else {
+                'id': uuid.uuid4().hex, 'owner_id': user['id'], 'created_at': time.time(),
+                'jobs': [], 'measurement': {'status': 'idle'},
+            }
+            profile.update(name=str(body.get('name', '我的娃娃')).strip()[:40] or '我的娃娃',
+                           height_cm=height, gender=body['gender'], notes=str(body.get('notes', ''))[:1000],
+                           project_id=project_id, views=views)
+            if editing and any(profile[key] != previous[key] for key in MEASUREMENT_INPUTS):
+                profile['measurement'] = {'status': 'idle'}
             write_profile(profile)
             return profile_view(profile, user)
         if path == 'measure':

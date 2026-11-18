@@ -1,5 +1,5 @@
 {
-  "automated_checks": 28,
+  "automated_checks": 29,
   "actual_http_health_check": true,
   "actual_http_web_pages": true,
   "example_glb_range_response": 206,
@@ -35,7 +35,7 @@
   "live_health_check_url": "https://rd-1-2co1.onrender.com/healthz",
   "live_admin_login_verified": true,
   "ui_manual_3d_and_import_checks": 5,
-  "ui_flow_checks_total": 18,
+  "ui_flow_checks_total": 20,
   "manual_3d_release": {
     "version": "2026.11.17-manual-3d",
     "backend_checks": 28,
@@ -50,6 +50,17 @@
     "backend_checks": 28,
     "ui_flow_checks": 18,
     "browser_homepage_dialogs_verified_locally": true,
+    "actual_new_paid_generations": 0
+  },
+  "compact_wardrobe_release": {
+    "version": "2026.11.18-compact-wardrobe",
+    "backend_checks": 29,
+    "ui_flow_checks": 20,
+    "local_browser_viewports_verified": [
+      "1280x720",
+      "390x650"
+    ],
+    "browser_fixture_outfits": 6,
     "actual_new_paid_generations": 0
   }
 }

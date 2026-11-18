@@ -2,6 +2,7 @@
 
 const qualityNames = {low: '快速', medium: '均衡', high: '精细'};
 let wardrobeSignature = '';
+let wardrobePage = 0;
 let openedOutfitId = null;
 let selectedOutfitView = 'front';
 let stageSignature = '';
@@ -38,16 +39,37 @@ function wardrobeCard(job) {
   return button;
 }
 
+const mediumWardrobe = window.matchMedia?.('(min-width: 621px)');
+const wideWardrobe = window.matchMedia?.('(min-width: 961px)');
+function wardrobePageSize() {
+  return wideWardrobe?.matches ? 4 : mediumWardrobe?.matches ? 3 : 2;
+}
+
+function recordOutfit(job) {
+  if (!current) return;
+  const previousIndex = current.designs.findIndex(item => item.id === job.id);
+  const designs = [...current.designs];
+  if (previousIndex < 0) designs.unshift(job);
+  else designs[previousIndex] = job;
+  wardrobePage = Math.floor(Math.max(previousIndex, 0) / wardrobePageSize());
+  current = {...current, designs};
+  renderDesigns(designs);
+}
+
 function renderDesigns(jobs = []) {
-  const displayState = JSON.stringify(jobs.map(job => [
+  const size = wardrobePageSize();
+  const pages = Math.max(1, Math.ceil(jobs.length / size));
+  wardrobePage = Math.max(0, Math.min(wardrobePage, pages - 1));
+  const visible = jobs.slice(wardrobePage * size, (wardrobePage + 1) * size);
+  const displayState = JSON.stringify(visible.map(job => [
     job.id, job.name, job.status, job.cover_url, job.images, job.tripo?.model_url
   ]));
   if (wardrobeSignature !== displayState) {
     wardrobeSignature = displayState;
     const grid = $('#designs');
     const focused = document.activeElement?.closest('.wardrobe-item')?.id;
-    grid.replaceChildren(...jobs.map(wardrobeCard));
-    if (focused) document.getElementById(focused)?.focus();
+    grid.replaceChildren(...visible.map(wardrobeCard));
+    if (focused) document.getElementById(focused)?.focus({preventScroll:true});
     if (!jobs.length) {
       grid.append(el('p', current ? '这只娃娃的衣柜还是空的，点「开始设计」做一套新衣。' :
         '先保存娃娃档案，再为它设计第一套衣服。', 'wardrobe-empty'));
@@ -55,13 +77,24 @@ function renderDesigns(jobs = []) {
   }
   $('#wardrobe-title').textContent = current ? current.name + '的衣柜' : '我的娃娃衣柜';
   $('#design-summary').textContent = current ? '共 ' + jobs.length + ' 套衣服' :
-    '每只娃娃都有自己的衣柜。';
+    '选择或新建娃娃档案';
+  $('#wardrobe-pages').hidden = pages <= 1;
+  const pageLabel = (wardrobePage + 1) + ' / ' + pages;
+  if ($('#wardrobe-page').textContent !== pageLabel) $('#wardrobe-page').textContent = pageLabel;
+  $('#wardrobe-prev').disabled = wardrobePage === 0;
+  $('#wardrobe-next').disabled = wardrobePage + 1 >= pages;
 
   if (openedOutfitId) {
     const job = jobs.find(item => item.id === openedOutfitId);
     if (job) renderOutfit(job);
     else closeOutfit();
   }
+}
+
+$('#wardrobe-prev').onclick = () => {wardrobePage--; renderDesigns(current?.designs)};
+$('#wardrobe-next').onclick = () => {wardrobePage++; renderDesigns(current?.designs)};
+for (const layout of [mediumWardrobe, wideWardrobe]) {
+  layout?.addEventListener?.('change', () => renderDesigns(current?.designs));
 }
 
 function openOutfit(id) {

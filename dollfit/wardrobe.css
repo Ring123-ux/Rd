@@ -1,6 +1,22 @@
 .fit .wardrobe-card {
   background: #fffdf8;
-  padding: 18px;
+  padding: clamp(12px, 2.6vw, 24px);
+  margin: 0;
+}
+
+.fit .fit-main {
+  max-width: 1120px;
+  padding: clamp(10px, 2.3vh, 24px) 4% 14px;
+}
+
+.fit > header {
+  min-height: 0;
+  padding: 8px 4%;
+}
+
+.fit > header .dragon {
+  width: 36px;
+  height: 36px;
 }
 
 .wardrobe-banner {
@@ -8,21 +24,32 @@
   justify-content: space-between;
   align-items: center;
   gap: 18px;
-  min-height: 158px;
-  padding: 18px 24px;
+  padding: clamp(10px, 2vw, 18px);
   background: linear-gradient(120deg, #f5e4df, #f9efe1 62%, #f3ecd9);
   border: 1px solid #f0ded2;
   border-radius: 17px;
 }
 
-.wardrobe-banner h2, .wardrobe-banner p, .dialog-heading h2, .dialog-heading p {
+.fit .wardrobe-banner h1, .wardrobe-banner p, .dialog-heading h2, .dialog-heading p {
   margin: 0;
 }
 
-.wardrobe-banner h2, .dialog-heading h2 {
+.fit .wardrobe-banner h1, .dialog-heading h2 {
   color: #744f58;
   overflow-wrap: anywhere;
 }
+
+.fit .wardrobe-banner h1 {
+  font-size: clamp(19px, 3.1vw, 30px);
+  letter-spacing: 0;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+#profile-open { flex: none; }
 
 .wardrobe-toolbar, .dialog-heading, .home-atelier-bar {
   display: flex;
@@ -31,22 +58,49 @@
 }
 
 .wardrobe-toolbar {
-  margin: 18px 0;
+  margin: clamp(8px, 1.6vh, 16px) 0;
   flex-wrap: wrap;
 }
 
 .wardrobe-toolbar #show-example { margin-left: auto; }
 
+.fit .wardrobe-toolbar #import-open { margin-top: 0; }
+
 .wardrobe-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 158px), 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+@media (min-width: 621px) {
+  .wardrobe-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 961px) {
+  .wardrobe-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+.wardrobe-pages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.fit .wardrobe-pages button { padding: 6px 13px; font-size: 13px; }
+
+.fit #notice, .fit #storage-note {
+  position: static;
+  margin: 10px 0 0;
+  padding: 7px 11px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .wardrobe-empty {
   grid-column: 1 / -1;
   margin: 0;
-  padding: 38px 16px;
+  padding: clamp(22px, 6vh, 44px) 16px;
   border: 1px dashed #e4d5c6;
   border-radius: 16px;
   background: #fbf6ef;
@@ -79,6 +133,7 @@
   position: relative;
   overflow: hidden;
   aspect-ratio: 9 / 8;
+  max-height: clamp(94px, 33vh, 228px);
   background: #f3e7e0;
   border-radius: 9px;
   color: #795f55;
@@ -95,7 +150,13 @@
   transform: scale(1.2);
   transform-origin: center top;
 }
-.wardrobe-item strong, .wardrobe-item-state { padding: 0 5px; }
+.wardrobe-item strong, .wardrobe-item-state {
+  min-width: 0;
+  padding: 0 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .wardrobe-item-state { font-size: 12px; color: #765e58; }
 
 .fit .atelier-dialog {
@@ -104,6 +165,7 @@
   max-height: calc(100dvh - 24px);
   box-sizing: border-box;
   overflow: auto;
+  overscroll-behavior: contain;
   text-align: left;
   padding: clamp(16px, 3vw, 30px);
   background: #fffaf3;
@@ -111,7 +173,22 @@
 }
 
 .fit #outfit-dialog { width: min(1030px, calc(100vw - 24px)); }
+.fit #profile-dialog { width: min(690px, calc(100vw - 24px)); }
+.fit #example-dialog { width: min(720px, calc(100vw - 24px)); }
 .dialog-heading, .home-atelier-bar { justify-content: space-between; margin-bottom: 16px; }
+
+.profile-picker {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eaddd2;
+  margin-bottom: 14px;
+}
+.fit .profile-picker label { flex: 1; min-width: 0; margin: 0; }
+.profile-picker > button { flex: none; }
+.fit #profile-dialog .upload-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.fit #profile-dialog .photo-slot .thumb { height: 100px; }
 
 .wardrobe-close, .fit .wardrobe-close {
   display: grid;
@@ -230,17 +307,25 @@ dialog.home-atelier[open] { display: grid; grid-template-rows: auto minmax(0, 1f
 #atelier-frame { display: block; width: 100%; height: 100%; border: 0; }
 .fit.embedded-workbench > header { min-height: 0; padding: 10px 4%; }
 .embedded-workbench > header nav a[href="index.html"], .embedded-workbench .heading { display: none; }
-.fit.embedded-workbench .fit-main { padding-top: 12px; }
+.fit.embedded-workbench .fit-main { padding-top: 10px; }
 
 @media (max-width: 680px) {
-  .wardrobe-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-  .wardrobe-banner { min-height: 110px; padding: 12px 14px; }
-  .wardrobe-banner img { width: 59px; }
+  .wardrobe-grid { gap: 9px; }
+  .wardrobe-toolbar { gap: 6px; }
+  .fit .wardrobe-toolbar .primary, .fit .wardrobe-toolbar .secondary, .fit #profile-open { padding: 8px 12px; font-size: 13px; }
   .wardrobe-toolbar #show-example { margin-left: 0; }
+  .fit #profile-dialog .upload-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .outfit-layout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .outfit-details .outfit-description { max-height: 86px; }
   .outfit-stage .outfit-photo { height: min(39vh, 330px); }
   .fit .outfit-model model-viewer { height: min(46vh, 380px); }
   .fit .quality-options { grid-template-columns: 1fr; }
   .quality-options small { margin-top: 0; }
+}
+
+@media (max-height: 500px) {
+  .fit .fit-main { padding-top: 8px; }
+  .fit .wardrobe-card { padding: 10px; }
+  .wardrobe-banner { padding: 8px 12px; }
+  .wardrobe-cover { max-height: 105px; }
 }

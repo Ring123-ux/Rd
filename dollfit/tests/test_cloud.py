@@ -119,6 +119,7 @@ def test_profile_media_and_source_reuse_are_owner_scoped(client):
         assert second.get('/api/profile/' + p['id']).status_code == 404
         assert second.get(original).status_code == 404
         assert send(second, 'profile', {'source_id': p['id'], 'height_cm': 17, 'gender': 'female', 'views': {}}).status_code == 404
+        assert send(second, 'profile', {'profile_id': p['id'], 'height_cm': 17, 'gender': 'female', 'views': {}}).status_code == 404
         other = profile(second)
         assert other['project_id'] != p['project_id']
 
@@ -328,6 +329,23 @@ def test_import_completed_views_is_idempotent_and_does_not_call_generation(clien
     assert len(client.get('/api/profile/'+p['id']).json()['designs'])==1
     missing=send(client,'import-design',{'profile_id':p['id'],'views':{'front':views['front']}})
     assert missing.status_code==400
+
+
+def test_editing_an_archive_keeps_its_clothes_and_invalidates_old_measurements(client):
+    saved, outfit, _ = imported_job(client)
+    record = cloud.read_profile(saved['id'], {'id': client.get('/api/bootstrap').json()['user']['id']})
+    record['measurement'] = {'status': 'succeeded', 'rows': [{'name': '胸围', 'value': 9.8}]}
+    cloud.write_profile(record)
+    body = {'profile_id': saved['id'], 'height_cm': 17, 'gender': 'female', 'name': '新昵称', 'views': {}}
+    renamed = send(client, 'profile', body)
+    assert renamed.status_code == 200
+    assert renamed.json()['id'] == saved['id']
+    assert renamed.json()['measurement']['status'] == 'succeeded'
+    updated = send(client, 'profile', {**body, 'height_cm': 18}).json()
+    assert updated['measurement']['status'] == 'idle'
+    assert updated['designs'][0]['id'] == outfit['id']
+    assert updated['photos'] == saved['photos']
+    assert len(client.get('/api/bootstrap').json()['profiles']) == 1
 
 
 def test_signed_provider_link_scopes_exact_image_and_expiry(client,monkeypatch):
