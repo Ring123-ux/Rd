@@ -11,6 +11,7 @@ from PIL import Image
 from .wardrobe_settings import load_settings,load_key,redact
 
 MAX_IMAGE_BYTES=40*1024*1024
+IMAGE_QUALITIES = ('low', 'medium', 'high')
 
 def _network_options():
     # Per-provider routing; do not change the user's system proxy settings.
@@ -92,7 +93,7 @@ def decode_output(body):
 def edit_images(image_paths,prompt,quality='medium',size='1024x1024'):
     settings=load_settings()
     if not image_paths or len(image_paths)>8:raise ValueError('请提供1至8张有效参考图片。')
-    if quality not in {'medium','high'} or size not in {'1024x1024','1024x1536'}:raise ValueError('不支持的生图规格。')
+    if quality not in IMAGE_QUALITIES or size not in {'1024x1024','1024x1536'}:raise ValueError('不支持的生图规格。')
     files=[]
     for index,path in enumerate(image_paths,1):
         with Image.open(path) as image:

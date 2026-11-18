@@ -75,7 +75,10 @@ def test_public_example_is_actual_highest_and_supports_range(client):
 
 def test_static_never_exposes_backend_secrets_or_database(client):
     assert client.get('/').status_code == 200
-    assert client.get('/workbench.html').status_code == 200
+    workbench = client.get('/workbench.html?entry=studio')
+    assert workbench.status_code == 200
+    assert workbench.headers['x-frame-options'] == 'SAMEORIGIN'
+    assert client.get('/api/bootstrap').headers['x-frame-options'] == 'DENY'
     for path in ['/runtime/auth.py', '/.env.example', '/requirements.txt', '/models/model_metadata.json', '/data/accounts.sqlite3']:
         assert client.get(path).status_code == 404
 
@@ -144,7 +147,9 @@ def test_design_enforces_quality_and_idempotency(client, monkeypatch):
     second = send(client, 'design', body, rid)
     assert first.json()['id'] == second.json()['id']
     job = jobs.read_job(first.json()['id'])
-    assert job['quality'] == 'high' and job['size'] == '1024x1536'
+    assert job['quality'] == 'low' and job['size'] == '1024x1536'
+    assert first.json()['quality'] == 'low'
+    assert send(client, 'design', {**body, 'quality': 'invalid'}).status_code == 400
     jobs.RUNNING.discard(job['id'])
 
 
@@ -230,24 +235,39 @@ def test_full_design_to_3d_chain_uses_real_files_and_no_extra_paid_post(client, 
     monkeypatch.setattr(cloud.tripo, 'query', lambda *args: {'status': 'success', 'progress': 100, 'face_count': 1500000,
                                                            'output': {'model_url': 'https://example.com/model.glb'}})
     monkeypatch.setattr(cloud.tripo, 'download', lambda url, dest: dest.write_bytes(b'fake-test-glb'))
-    response = send(client, 'design', {'profile_id': p['id'], 'prompt': '灰绿开衫与粉色百褶裙', 'auto_3d': True})
+    response = send(client, 'design', {'profile_id': p['id'], 'prompt': '灰绿开衫与粉色百褶裙',
+                                       'quality': 'medium', 'outfit_name': '花园午后'})
     assert response.status_code == 200, response.text
     jid = response.json()['id']
     cloud.run_design(jid)
     result = client.get('/api/job/' + jid).json()
     assert result['status'] == 'succeeded' and len(result['images']) == 4
+    assert result['name'] == '花园午后' and result['quality'] == 'medium'
+    assert client.get(result['cover_url']).headers['content-type'] == 'image/jpeg'
+    assert client.get('/api/profile/' + p['id']).json()['designs'][0]['id'] == jid
+    assert not model_calls
+    assert send(client, 'tripo', {'job_id': jid}).status_code == 200
+    cloud.run_tripo(jid)
+    result = client.get('/api/job/' + jid).json()
     assert result['tripo']['status'] == 'succeeded'
     assert result['tripo']['face_count'] == 1500000
     assert len(image_calls) == 4 and len(model_calls) == 1
-    assert all(call[2:] == ('high', '1024x1536') for call in image_calls)
+    assert all(call[2:] == ('medium', '1024x1536') for call in image_calls)
     assert model_calls[0][1] == 'highest'
-    assert 'SCREEN-LEFT-FACING' in image_calls[1][1] and 'SCREEN-RIGHT-FACING' in image_calls[3][1]
+    assert '左侧面：鼻尖' in image_calls[1][1] and '右侧面：鼻尖' in image_calls[3][1]
+    for index, view in enumerate(cloud.VIEWS):
+        paths, prompt, _, _ = image_calls[index]
+        assert paths[0].name == view + '.png'
+        assert '禁止增加、删除或复制手' in prompt and '手穿过袖壁' in prompt
+        if view != 'front':
+            assert paths[-1].name == 'front_dressed.png'
     assert send(client, 'tripo', {'job_id': jid}).status_code == 200
     assert len(model_calls) == 1
     with TestClient(cloud.app) as another:
         account(another)
         assert another.get('/api/job/' + jid).status_code == 404
         assert another.get(result['tripo']['model_url']).status_code == 404
+        assert another.get(result['cover_url']).status_code == 404
 
 
 def test_real_measurement_subprocess_returns_all_13_and_scales_with_height(client):

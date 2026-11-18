@@ -37,7 +37,7 @@ VIEWS = wardrobe.VIEWS
 EXAMPLE = 'bd0228c40529495eaa48e3f614002e64'
 SECURE_COOKIE = bool(os.environ.get('RENDER')) or os.environ.get('APP_URL', '').startswith('https://')
 COOKIE = 'dollfit_session'
-VERSION = '2026.11.17-manual-3d'
+VERSION = '2026.11.18-wardrobe'
 
 
 def fail(message, status=400):
@@ -78,6 +78,9 @@ def job_view(job):
     safe_state['submission_uncertain'] = bool(state.get('submission_started') and not state.get('task_id'))
     safe_state['uploaded_views'] = len(state.get('tokens', {}))
     return {'id': jid, 'status': job['status'], 'prompt': job['user_prompt'], 'view_status': job['view_status'],
+            'name': job.get('outfit_name', ''), 'quality': job.get('quality', 'high'),
+            'created_at': job.get('created_at'),
+            'cover_url': f'/media/design/{jid}/wardrobe_cover.jpg' if path.with_name('wardrobe_cover.jpg').is_file() else None,
             'errors': job['errors'], 'images': {v: f'/media/design/{jid}/{v}_dressed.png' for v in job['results']},
             'tripo': safe_state}
 
@@ -313,7 +316,12 @@ async def security(request, call_next):
             return fail('请求长度无效。')
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'DENY'
+    # The homepage opens the real workbench in a same-origin dialog.
+    if request.url.path == '/workbench.html':
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        response.headers['Content-Security-Policy'] = "frame-ancestors 'self'"
+    else:
+        response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'same-origin'
     if request.url.path.startswith(('/api/', '/media/original/', '/media/design/')):
         response.headers['Cache-Control'] = 'no-store'
@@ -434,6 +442,10 @@ def post(path, body, user, request_id):
                 return job_view(read_job(jid, user))
             folder = wardrobe.job_path(jid);folder.mkdir(parents=True)
             for view in VIEWS:pictures[view].save(folder / (view + '_dressed.png'))
+            try:
+                wardrobe.save_cover(folder / 'front_dressed.png')
+            except OSError:
+                pass  # Imported full-size images are still available as the cover fallback.
             prompt = '导入已有服装四视图，可直接用于3D生成'
             job = {'id': jid, 'project_id': profile['project_id'], 'owner_id': user['id'], 'views': list(VIEWS),
                    'status': 'succeeded', 'user_prompt': prompt, 'instructions': [prompt], 'created_at': time.time(),
@@ -460,12 +472,19 @@ def post(path, body, user, request_id):
                 raise ValueError('自动3D需要四个角度原图。')
             if auto:
                 tripo.preflight()
+            quality = body.get('quality', 'high')
+            if quality not in wardrobe.IMAGE_QUALITIES:
+                raise ValueError('请选择快速、均衡或精细画质。')
+            outfit_name = body.get('outfit_name', '')
+            if not isinstance(outfit_name, str) or len(outfit_name.strip()) > 60:
+                raise ValueError('衣服名字最多60字。')
             references = body.get('references', [])
             if not isinstance(references, list) or len(references) > 3:
                 raise ValueError('最多提供3张服装参考图。')
             references = [image(value) for value in references]
             job = wardrobe.create_job(profile['project_id'], str(body.get('prompt', '')), profile['height_cm'],
-                                      'high', '1024x1536', references)
+                                      quality, '1024x1536', references,
+                                      new_outfit=body.get('new_outfit') is True, outfit_name=outfit_name.strip())
             jid = job['id']
             reservations = [('design', request_id, jid)]
             if auto:
@@ -627,7 +646,7 @@ def media_file(kind: str, record: str, name: str, request: Request):
         identifier(record)
         if kind == 'design':
             read_job(record, user)
-            if name not in [v + '_dressed.png' for v in VIEWS] + ['tripo_model.glb']:
+            if name not in [v + '_dressed.png' for v in VIEWS] + ['tripo_model.glb', 'wardrobe_cover.jpg']:
                 raise FileNotFoundError()
             file = wardrobe.job_path(record) / name
         elif kind == 'original':
@@ -639,7 +658,8 @@ def media_file(kind: str, record: str, name: str, request: Request):
             raise FileNotFoundError()
         if not file.is_file():
             raise FileNotFoundError()
-        return FileResponse(file, media_type='model/gltf-binary' if name.endswith('.glb') else 'image/png')
+        media_type = {'.glb': 'model/gltf-binary', '.jpg': 'image/jpeg'}.get(file.suffix, 'image/png')
+        return FileResponse(file, media_type=media_type)
     except (ValueError, FileNotFoundError):
         return fail('文件不存在。', 404)
 

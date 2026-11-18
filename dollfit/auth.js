@@ -5,9 +5,9 @@ const authButton=document.getElementById('account-link');
 const logoutButton=document.getElementById('logout-button');
 function showAccount(){authDialog.showModal()}
 function resetWorkbench(){
- current=null;profileOwnerId=null;pendingProfileSave=false;photos={};references=[];dirty=false;jobSignatures.clear();
+ current=null;profileOwnerId=null;pendingProfileSave=false;photos={};references=[];dirty=false;closeOutfit();
  localStorage.removeItem('dollfit-active-profile');
- $('#designs').replaceChildren(el('p','保存娃娃档案后开始设计。','muted'));
+ renderDesigns([]);$('#design-dialog').close();
  $('#profile-form').reset();$('#design-form').reset();uploadSlots();$('#measurements').replaceChildren();
  $('#reference-preview').replaceChildren();$('#references').value='';
  $('#import-form').reset();$('#import-dialog').close();$('#import-error').textContent='';
@@ -39,7 +39,7 @@ $('#account-form').onsubmit=async e=>{
   $('#account-password').value='';$('#invite-code').value='';
   if(!keepDraft)resetWorkbench();
   pendingProfileSave=false;
-  const b=await bootstrap();if(!keepDraft&&b.profiles[0])await loadProfile(b.profiles[0].id);
+  const b=await bootstrap();if(!keepDraft&&entryMode!=='profile'&&b.profiles[0])await loadProfile(b.profiles[0].id);
   authDialog.close();notify(keepDraft?'已登录，你选择的照片和填写内容已保留。':'已进入你的设计工作台。');
   if(resumeSave)await saveProfile();
  }catch(error){$('#account-error').textContent=error.message}finally{button.disabled=false}
@@ -47,4 +47,4 @@ $('#account-form').onsubmit=async e=>{
 logoutButton.onclick=()=>action(async()=>{await api('auth/logout',{});resetWorkbench();await bootstrap();notify('已退出登录。')});
 window.addEventListener('dollfit-account-required',showAccount);
 
-(async()=>{try{const b=await bootstrap(),id=localStorage.getItem('dollfit-active-profile');if(!hasUnsavedDraft()){if(id&&b.profiles.some(p=>p.id===id))await loadProfile(id);else if(b.profiles[0])await loadProfile(b.profiles[0].id)}}catch(e){notify(e.message,true)}})();
+(async()=>{try{const b=await bootstrap(),id=localStorage.getItem('dollfit-active-profile');if(entryMode==='profile'){focusProfile();return}if(!hasUnsavedDraft()){if(id&&b.profiles.some(p=>p.id===id))await loadProfile(id);else if(b.profiles[0])await loadProfile(b.profiles[0].id)}if(entryMode==='studio')$('#design').scrollIntoView?.({block:'start'})}catch(e){notify(e.message,true)}})();

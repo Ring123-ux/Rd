@@ -13,12 +13,12 @@ import sys
 import time
 import uuid
 import zipfile
-from PIL import Image
-from .wardrobe_api import edit_images
+from PIL import Image, ImageOps
+from .wardrobe_api import IMAGE_QUALITIES, edit_images
 from .wardrobe_settings import ROOT,redact
 
 VIEWS={'front':'正面','left':'左侧面','back':'背面','right':'右侧面'}
-PROMPT_VERSION='pose-lock-garment-reference-v2'
+PROMPT_VERSION='doll-outfit-geometry-v3'
 PROJECTS=ROOT/'reports'/'wardrobe'/'projects'
 JOBS=ROOT/'reports'/'wardrobe'/'jobs'
 
@@ -33,6 +33,16 @@ def read_json(path):return json.loads(path.read_text(encoding='utf-8'))
 
 def png_bytes(image):
     out=io.BytesIO();image.convert('RGBA').save(out,format='PNG');return out.getvalue()
+
+
+def save_cover(front_path):
+    """Create a small upper-body preview from the front result."""
+    with Image.open(front_path) as front:
+        portrait = front.crop((0, 0, front.width, max(1, round(front.height * 0.57))))
+        portrait = ImageOps.fit(portrait.convert('RGB'), (360, 320), centering=(0.5, 0.0))
+        temporary = front_path.with_name('wardrobe_cover.tmp')
+        portrait.save(temporary, 'JPEG', quality=86)
+        temporary.replace(front_path.with_name('wardrobe_cover.jpg'))
 
 
 def validate_views(views):
@@ -69,9 +79,10 @@ def job_path(job_id):
 def read_job(job_id):return read_json(job_path(job_id)/'job.json')
 
 
-def create_job(project_id,prompt,height_cm=None,quality='medium',size='1024x1024',garment_references=None,view_directions=None):
+def create_job(project_id,prompt,height_cm=None,quality='high',size='1024x1536',garment_references=None,view_directions=None,*,new_outfit=False,outfit_name=''):
     prompt=prompt.strip()
     if not prompt or len(prompt)>5000:raise ValueError('请输入1至5000字的服装描述。')
+    if quality not in IMAGE_QUALITIES:raise ValueError('请选择快速、均衡或精细画质。')
     if len(project_id)!=32 or any(c not in '0123456789abcdef' for c in project_id):raise ValueError('原图项目编号无效。')
     project=read_json(PROJECTS/project_id/'project.json')
     references=list(garment_references or [])
@@ -86,13 +97,13 @@ def create_job(project_id,prompt,height_cm=None,quality='medium',size='1024x1024
     prior=next((job for job in reversed(previous) if job['results'].get('front') and
                 (not references or [item['sha256'] for item in job.get('garment_references',[])]==hashes)),None)
     prior_hashes=[item['sha256'] for item in previous[-1].get('garment_references',[])] if previous else []
-    new_style=bool(references) and hashes!=prior_hashes
+    new_style=new_outfit or (bool(references) and hashes!=prior_hashes)
     instructions=(previous[-1].get('instructions',[previous[-1]['user_prompt']])[-7:] if previous and not new_style else [])+[prompt]
     job_id=uuid.uuid4().hex;path=job_path(job_id)
     job={'id':job_id,'project_id':project_id,'user_prompt':prompt,'instructions':instructions,
          'prior_job_id':prior['id'] if prior and not new_style else None,'views':project['views'],
          'prompt_version':PROMPT_VERSION,'view_directions':directions,'garment_references':[],
-         'quality':'high','size':'1024x1536','height_cm':height_cm,'created_at':time.time(),
+         'quality':quality,'size':size,'outfit_name':outfit_name,'height_cm':height_cm,'created_at':time.time(),
          'status':'queued','view_status':{key:'pending' for key in project['views']},
          'results':{},'errors':{},'worker_pid':None}
     path.mkdir(parents=True,exist_ok=True)
@@ -124,7 +135,7 @@ def prompt_and_images(job,view):
         roles.append(f'图{len(images)}：服装款式参考。只提取衣服、帽子、鞋袜等可穿戴服饰的款式、材质、颜色、图案与工艺，不复制参考人物的脸、头发、身体、姿势、相机角度或背景。拼图中的各角度仅用于理解服装结构。')
     if view!='front' and job['results'].get('front'):
         images.append(job_path(job['id'])/job['results']['front']['file'])
-        roles.append(f'图{len(images)}：本轮已经确定的正面穿衣设计，服装颜色、面料、领型、袖型、花纹、配饰和长度必须与它一致。只转为目标视角。')
+        roles.append(f'图{len(images)}：只作为同款服装的参考。保持面料、颜色、领型、袖口、花纹、配饰及衣长一致；绝不采用此图的身体、手脚、姿势、构图或视角。实际遮挡关系以图1为准。')
     elif job.get('prior_job_id'):
         prior=read_job(job['prior_job_id'])
         source=prior['results'].get(view) or prior['results'].get('front')
@@ -133,10 +144,8 @@ def prompt_and_images(job,view):
             roles.append(f'图{len(images)}：上一轮服装设计参考；按本轮最新要求修改，其余已确认服装细节尽量保持。')
     history='\n'.join(f'{i+1}. {text if i==len(job["instructions"])-1 else text[:1800]}' for i,text in enumerate(job['instructions']))
     height=f"人偶真实身高约{job['height_cm']:g}厘米，服装应表现为微型娃衣。" if job.get('height_cm') else '服装为微型BJD娃衣。'
-    direction=job.get('view_directions',{}).get(view,'left' if view=='left' else 'right')
     if view in {'left','right'}:
-        screen='右' if direction=='right' else '左';english='RIGHT' if direction=='right' else 'LEFT'
-        pose=f'严格纯侧面：鼻尖、脸部正面、胸部前侧与脚尖均朝向输出画面的{screen}边。SCREEN-{english}-FACING PROFILE. Nose and toes point to the {english} edge of the image. Preserve the exact pose and orientation of Image 1. 所有服装参考只决定服装，不决定视角，不能把另一个侧面复制过来。'
+        pose=f'{VIEWS[view]}：鼻尖、脚尖和可见一侧必须与图1相同。禁止镜像或复制另一个侧面。'
     elif view=='back':pose='严格背面视图，展示头后部、背部和衣服背面结构，保持图1站姿和相机方向，不能转成正面或侧面。'
     else:pose='保持图1中的正面或近正面视角与站姿，不要转成侧面或背面。'
     prompt=f'''Use case: identity-preserve / BJD clothing design preview.
@@ -144,11 +153,13 @@ def prompt_and_images(job,view):
 根据以下服装需求，编辑图1，让原人偶穿上同一套可辨认的衣服。输出且仅输出一张完整的{VIEWS[view]}效果图，不要拼图、不要其他角度、不要文字标注。
 输入图片角色：
 {chr(10).join(roles)}
-视角硬性约束（最高优先级）：{pose}
-按时间顺序的用户要求（最后一条优先，未修改的要求继续有效）：
+视角约束：{pose}
+服装设计要求（仅决定衣服和配饰）：
 {history}
-硬性保留：图1中的脸、头部、眼睛、发型、树脂肤色、娃体比例、手脚、姿势、关节位置、相机视角和背景。不要美化成真人，不要改变肢体长度，不要增加肢体。
-只围绕服装和用户明确提出的配饰修改。衣服自然包裹原娃体，保留原有轮廓和身体姿态。服装参考不能改变图1的拍摄角度。保持整个人偶完整入镜，可在需要时留白。
+以下约束优先于所有款式和参考图。编辑范围限于服装覆盖的区域与用户指定的配饰。
+保持图1的头脸、发型、肤色、头身比、四肢长度、肩宽、关节位置、站姿和相机视角。保留整个人偶和画面中的头顶、脚底。服装可以增加合理的体积，身体比例和姿势保持原样。
+图1决定每只手、每只脚的位置、方向、形状、可见性和遮挡顺序。保留玩偶原有的指形和脚型。禁止增加、删除或复制手、指、脚或四肢。图1中被身体遮住的手脚不要补画到另一侧。鞋袜覆盖原脚，鞋尖方向跟随原脚。
+遵循实际前后关系：袖管沿着原手臂，手从相应袖口自然伸出。手在布料前方则遮住布料，在布料后方则被遮住。禁止手穿过袖壁、掌心穿入衣身、手指与布料相熔、其他角度的肢体重影。布料应有合理的厚度、重力下垂、接触阴影和褶皱。
 多角度保持同款，尤其是领型、袖口、裙长、布料、颜色和图案。未指定的细节采用简洁且与同款结构一致的设计。本图只作服装外观预览，不显示尺寸文字或裁剪纸样。'''
     return prompt,images
 
@@ -166,10 +177,13 @@ def run(job_id):
             prompt,images=prompt_and_images(job,view)
             (path/(view+'_prompt.txt')).write_text(prompt,encoding='utf-8')
             try:
-                payload,meta=edit_images(images,prompt,'high','1024x1536')
+                payload,meta=edit_images(images,prompt,job.get('quality','high'),job.get('size','1024x1536'))
                 filename=view+'_dressed.png';(path/filename).write_bytes(payload)
+                if view=='front':
+                    try:save_cover(path/filename)
+                    except OSError:pass  # Keep the front result available if the thumbnail cannot be saved.
                 job['results'][view]={'file':filename,'prompt_version':PROMPT_VERSION,
-                    'expected_screen_direction':job.get('view_directions',{}).get(view) if view in {'left','right'} else None,**meta};job['view_status'][view]='succeeded'
+                    **meta};job['view_status'][view]='succeeded'
             except Exception as error:
                 job['errors'][view]=redact(error)[:900];job['view_status'][view]='failed'
             write_json(path/'job.json',job)
