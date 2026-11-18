@@ -35,7 +35,7 @@
   "live_health_check_url": "https://rd-1-2co1.onrender.com/healthz",
   "live_admin_login_verified": true,
   "ui_manual_3d_and_import_checks": 5,
-  "ui_flow_checks_total": 21,
+  "ui_flow_checks_total": 22,
   "manual_3d_release": {
     "version": "2026.11.17-manual-3d",
     "backend_checks": 28,
@@ -78,5 +78,15 @@
       1500000
     ],
     "actual_new_paid_generations": 0
+  },
+  "private_media_cache_release": {
+    "version": "2026.11.19-model-preview",
+    "backend_checks": 32,
+    "ui_flow_checks": 22,
+    "live_public_example_bytes": 75478524,
+    "live_whole_download_interrupted_after_bytes": 75235328,
+    "live_final_range_matches_local_example": true,
+    "private_outfit_download_verified": false,
+    "new_paid_generations": 0
   }
 }

@@ -270,18 +270,35 @@ def test_full_design_to_3d_chain_uses_real_files_and_no_extra_paid_post(client, 
             assert paths[-1].name == 'front_dressed.png'
     assert send(client, 'tripo', {'job_id': jid}).status_code == 200
     assert len(model_calls) == 1
+    stored_model = client.get(result['tripo']['model_url'])
+    assert stored_model.status_code == 200
+    assert stored_model.headers['cache-control'] == 'private, no-cache, must-revalidate'
+    assert int(stored_model.headers['x-file-size']) == len(stored_model.content)
+    etag = {'If-None-Match': stored_model.headers['etag']}
+    cached = client.get(result['tripo']['model_url'], headers=etag)
+    assert cached.status_code == 304 and cached.content == b''
+    assert client.get(result['tripo']['model_url'], headers={'Range': 'bytes=0-3'}).status_code == 206
+    for artwork in (result['cover_url'], *result['images'].values()):
+        stored_image = client.get(artwork)
+        assert stored_image.status_code == 200
+        cached_image = client.get(artwork, headers={'If-None-Match': stored_image.headers['etag']})
+        assert cached_image.status_code == 304 and cached_image.content == b''
+        assert cached_image.headers['vary'] == 'Cookie'
+    assert client.get(p['photos']['front']).headers['cache-control'] == 'no-store'
     with TestClient(cloud.app) as another:
+        assert another.get(result['tripo']['model_url'], headers=etag).status_code == 401
         account(another)
         assert another.get('/api/job/' + jid).status_code == 404
-        assert another.get(result['tripo']['model_url']).status_code == 404
-        assert another.get(result['cover_url']).status_code == 404
+        assert another.get(result['tripo']['model_url'], headers=etag).status_code == 404
+        image_etag = client.get(result['cover_url']).headers['etag']
+        assert another.get(result['cover_url'], headers={'If-None-Match': image_etag}).status_code == 404
     (jobs.job_path(jid) / 'tripo_model.glb').unlink()
     missing = client.get('/api/job/' + jid).json()['tripo']
     assert missing['status'] == 'needs_attention' and 'model_url' not in missing
     assert send(client, 'tripo', {'job_id': jid, 'face_count': 500000}).json()['requested_face_count'] == 1000000
     cloud.run_tripo(jid)
     assert len(model_calls) == 1
-    assert client.get(result['tripo']['model_url']).status_code == 200
+    assert client.get(result['tripo']['model_url'], headers=etag).status_code == 200
 
 
 def test_real_measurement_subprocess_returns_all_13_and_scales_with_height(client):

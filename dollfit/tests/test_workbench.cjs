@@ -277,7 +277,7 @@ test('a saved outfit reopens all four views and displays the same stored GLB on 
  }finally{p.dom.window.close()}
 });
 
-test('a missing saved GLB shows the cause and reloads only the saved file on retry',async()=>{
+test('a missing saved GLB reports the cause without submitting any generation',async()=>{
  const job=makeJob({status:'succeeded',model_url:'/media/design/existing/tripo_model.glb'});
  const profile=makeProfile();profile.designs=[job];
  const p=await page({user:USER,profiles:[profile]});try{
@@ -291,8 +291,47 @@ test('a missing saved GLB shows the cause and reloads only the saved file on ret
   await until(()=>p.$('.outfit-model p').textContent.includes('找不到'));
   const retry=[...p.w.document.querySelectorAll('.model-actions button')].find(button=>button.textContent==='重试预览');
   retry.click();
-  assert.match(p.$('model-viewer').getAttribute('src'),/tripo_model.glb\?preview=/);
+  await until(()=>p.$('.outfit-model p').textContent.includes('找不到模型文件'));
   assert.equal(p.calls.filter(c=>c.endpoint==='tripo').length,0);
+ }finally{p.dom.window.close()}
+});
+
+test('retry downloads only the interrupted range and displays the existing model',async()=>{
+ const job=makeJob({status:'succeeded',model_url:'/media/design/existing/tripo_model.glb'});
+ const profile=makeProfile();profile.designs=[job];
+ const p=await page({user:USER,profiles:[profile]});try{
+  const partSize=4*1024*1024,total=partSize+24,bytes=new Uint8Array(total);
+  const header=new DataView(bytes.buffer);
+  header.setUint32(0,0x46546c67,true);header.setUint32(4,2,true);header.setUint32(8,total,true);
+  const oldFetch=p.w.fetch,ranges=[];
+  let failed=false,displayed,released;
+  p.w.Blob=Blob;
+  p.w.URL.createObjectURL=blob=>{displayed=blob;return 'blob:https://dollfit.test/test-model'};
+  p.w.URL.revokeObjectURL=url=>{released=url};
+  p.w.fetch=async(url,options)=>{
+   if(url!==job.tripo.model_url)return oldFetch(url,options);
+   const range=options.headers.Range;
+   const [start,end]=range.slice(6).split('-').map(Number);
+   const last=Math.min(end,total-1);
+   const data=bytes.slice(start,last+1);
+   if(range!=='bytes=0-19'){
+    ranges.push(range);
+    if(start>0&&!failed){failed=true;throw new TypeError('connection reset')}
+   }
+   return {status:206,ok:true,headers:new Headers({'Content-Range':'bytes '+start+'-'+last+'/'+total,'ETag':'test-glb'}),
+    blob:async()=>new Blob([data]),arrayBuffer:async()=>data.buffer};
+  };
+  await p.openOutfit(job.id);
+  p.$('.wardrobe-3d button').click();
+  p.$('model-viewer').dispatchEvent(new p.w.CustomEvent('error',{detail:{type:'loadfailure'}}));
+  await until(()=>p.$('.outfit-model p').textContent.includes('可以访问'));
+  [...p.w.document.querySelectorAll('.model-actions button')].find(button=>button.textContent==='重试预览').click();
+  await until(()=>displayed);
+  assert.equal(displayed.size,total);
+  assert.deepEqual(ranges,['bytes=0-'+(partSize-1),'bytes='+partSize+'-'+(total-1),'bytes='+partSize+'-'+(total-1)]);
+  assert.equal(p.calls.filter(c=>c.endpoint==='tripo').length,0);
+  p.$('#outfit-close').click();
+  assert.equal(released,'blob:https://dollfit.test/test-model');
  }finally{p.dom.window.close()}
 });
 

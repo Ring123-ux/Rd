@@ -21,7 +21,7 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from PIL import Image, ImageOps
 
 from . import auth, tripo_api as tripo, wardrobe_jobs as wardrobe
@@ -37,7 +37,7 @@ VIEWS = wardrobe.VIEWS
 EXAMPLE = 'bd0228c40529495eaa48e3f614002e64'
 SECURE_COOKIE = bool(os.environ.get('RENDER')) or os.environ.get('APP_URL', '').startswith('https://')
 COOKIE = 'dollfit_session'
-VERSION = '2026.11.18-single-page-model'
+VERSION = '2026.11.19-model-preview'
 MEASUREMENT_INPUTS = ('project_id', 'height_cm', 'gender')
 
 
@@ -331,7 +331,8 @@ async def security(request, call_next):
         response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'same-origin'
     if request.url.path.startswith(('/api/', '/media/original/', '/media/design/')):
-        response.headers['Cache-Control'] = 'no-store'
+        if 'Cache-Control' not in response.headers or response.status_code not in (200, 206, 304):
+            response.headers['Cache-Control'] = 'no-store'
     return response
 
 
@@ -687,6 +688,18 @@ def media_file(kind: str, record: str, name: str, request: Request):
         if not file.is_file():
             raise FileNotFoundError()
         media_type = {'.glb': 'model/gltf-binary', '.jpg': 'image/jpeg'}.get(file.suffix, 'image/png')
+        if kind == 'design':
+            # Every cache revalidation goes through the account and job ownership checks above.
+            stat = file.stat()
+            headers = {'Cache-Control': 'private, no-cache, must-revalidate', 'Vary': 'Cookie'}
+            if file.suffix == '.glb':
+                headers['X-File-Size'] = str(stat.st_size)
+            file_response = FileResponse(file, media_type=media_type, stat_result=stat, headers=headers)
+            cached_tags = request.headers.get('If-None-Match', '').split(',')
+            if any(tag.strip().removeprefix('W/') in ('*', file_response.headers['etag']) for tag in cached_tags):
+                return Response(status_code=304, headers={key: file_response.headers[key]
+                    for key in ('ETag', 'Cache-Control', 'Vary')})
+            return file_response
         return FileResponse(file, media_type=media_type)
     except (ValueError, FileNotFoundError):
         return fail('文件不存在。', 404)

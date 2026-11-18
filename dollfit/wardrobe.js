@@ -111,8 +111,88 @@ function openOutfit(id) {
 function clearOutfit() {
   openedOutfitId = null;
   detailSignature = stageSignature = '';
-  $('#outfit-stage').replaceChildren();
+  clearModelPreview($('#outfit-stage'));
   $('#outfit-details').replaceChildren();
+}
+
+function clearModelPreview(container) {
+  container.querySelector('.outfit-model')?.disposePreview?.();
+  container.replaceChildren();
+}
+
+const MODEL_PART_SIZE = 4 * 1024 * 1024;
+const MAX_MODEL_SIZE = 150 * 1024 * 1024;
+
+async function readModelPart(url, start, end, signal) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (signal.aborted) throw signal.reason;
+    const request = new AbortController();
+    const cancel = () => request.abort(signal.reason);
+    signal.addEventListener('abort', cancel, {once: true});
+    const timeout = setTimeout(() => request.abort(), 120000);
+    try {
+      const response = await fetch(url, {
+        headers: {Range: 'bytes=' + start + '-' + end},
+        signal: request.signal,
+        cache: 'no-store',
+      });
+      if (response.status !== 206) {
+        await response.body?.cancel();
+        return {status: response.status};
+      }
+      const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get('Content-Range') || '');
+      if (!range) {
+        await response.body?.cancel();
+        return {status: 206};
+      }
+      const blob = await response.blob();
+      if (blob.size !== Number(range[2]) - Number(range[1]) + 1) {
+        throw Error('分段下载不完整');
+      }
+      return {status: 206, start: Number(range[1]), end: Number(range[2]), total: Number(range[3]),
+              etag: response.headers.get('ETag'), blob};
+    } catch (error) {
+      if (signal.aborted) throw signal.reason;
+      lastError = error;
+    } finally {
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', cancel);
+    }
+  }
+  throw lastError;
+}
+
+async function loadModelInParts(url, signal, onProgress) {
+  const parts = [];
+  let offset = 0;
+  let total;
+  let etag;
+  while (total === undefined || offset < total) {
+    const end = Math.min(offset + MODEL_PART_SIZE, total ?? MODEL_PART_SIZE) - 1;
+    const part = await readModelPart(url, offset, end, signal);
+    if (part.status === 401 || part.status === 403) throw Error('登录状态已失效或无法访问此模型，请重新登录。');
+    if (part.status === 404) throw Error('找不到模型文件。重新打开这套衣服可查看恢复选项。');
+    if (part.status !== 206) throw Error('暂时无法分段读取模型（HTTP ' + part.status + '）。仍可下载 GLB。');
+    if (part.start !== offset || part.total < 20 || part.total > MAX_MODEL_SIZE ||
+        part.end !== Math.min(end, part.total - 1) ||
+        (total !== undefined && (part.total !== total || part.etag !== etag))) {
+      throw Error('模型文件在读取期间发生变化或未完整返回。请重新打开这套衣服。');
+    }
+    if (offset === 0) {
+      const header = new DataView(await part.blob.slice(0, 20).arrayBuffer());
+      if (header.byteLength < 20 || header.getUint32(0, true) !== 0x46546c67 ||
+          header.getUint32(4, true) !== 2 || header.getUint32(8, true) !== part.total) {
+        throw Error('服务器返回的 GLB 文件不完整或格式不正确。');
+      }
+      total = part.total;
+      etag = part.etag;
+    }
+    parts.push(part.blob);
+    offset = part.end + 1;
+    onProgress(offset, total);
+  }
+  return new Blob(parts, {type: 'model/gltf-binary'});
 }
 
 async function modelLoadMessage(url) {
@@ -155,9 +235,17 @@ $('#outfit-dialog').addEventListener('close', () => {
   if (target) target.focus({preventScroll:true});
 });
 
-function modelViewer(job, source=job.tripo.model_url) {
+function modelViewer(job, useParts=false) {
   const box = el('div', undefined, 'outfit-model');
   const viewer = el('model-viewer');
+  const transfer = new AbortController();
+  let objectUrl;
+  let retryInParts = true;
+  let failed = false;
+  box.disposePreview = () => {
+    transfer.abort();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  };
   viewer.setAttribute('camera-controls', '');
   viewer.setAttribute('touch-action', 'pan-y');
   viewer.setAttribute('shadow-intensity', '1');
@@ -194,29 +282,57 @@ function modelViewer(job, source=job.tripo.model_url) {
   const retry = el('button', '重试预览', 'secondary');
   retry.hidden = true;
   retry.onclick = () => {
-    const fresh = new URL(job.tripo.model_url, location.href);
-    fresh.searchParams.set('preview', Date.now());
-    box.replaceWith(modelViewer(job, fresh.href));
+    box.disposePreview();
+    box.replaceWith(modelViewer(job, retryInParts));
   };
+  viewer.addEventListener('progress', event => {
+    const progress = event.detail?.totalProgress;
+    if (!useParts && !failed && !viewer.loaded && progress > 0 && progress < 1) {
+      status.textContent = '正在加载3D模型… ' + Math.floor(progress * 100) + '%';
+    }
+  });
   viewer.addEventListener('load', () => {
     status.textContent = '拖动旋转，滚轮或双指缩放。';
     spin.disabled = reset.disabled = false;
     retry.hidden = true;
   });
   viewer.addEventListener('error', async event => {
+    failed = true;
     spin.disabled = reset.disabled = true;
     retry.hidden = false;
     if (event.detail?.type === 'webglcontextlost') {
+      retryInParts = false;
       status.textContent = '浏览器的3D渲染已中断。请关闭同一浏览器里的其他3D页面后重试。';
+      return;
+    }
+    if (useParts && objectUrl) {
+      status.textContent = '完整模型已下载，但浏览器没能解析或渲染。可以下载 GLB 在本地打开。';
       return;
     }
     status.textContent = '模型未能显示，正在检查文件…';
     const message = await modelLoadMessage(job.tripo.model_url);
     if (box.isConnected && !viewer.loaded) status.textContent = message;
   });
-  viewer.setAttribute('src', source);
   controls.append(spin, reset, retry, download);
   box.append(viewer, status, controls);
+  if (useParts) {
+    status.textContent = '正在分段读取已保存的模型…';
+    loadModelInParts(job.tripo.model_url, transfer.signal, (received,total) => {
+      status.textContent = '正在分段读取模型… ' + Math.floor(received / total * 100) + '%';
+    }).then(blob => {
+      if (transfer.signal.aborted || !box.isConnected) return;
+      objectUrl = URL.createObjectURL(blob);
+      status.textContent = '文件已下载，正在准备3D画面…';
+      viewer.setAttribute('src', objectUrl);
+    }).catch(error => {
+      if (transfer.signal.aborted || !box.isConnected) return;
+      status.textContent = error.name === 'AbortError' || error instanceof TypeError ?
+        '模型分段读取中断。可以重试预览，或下载 GLB。' : error.message;
+      retry.hidden = false;
+    });
+  } else {
+    viewer.setAttribute('src', job.tripo.model_url);
+  }
   return box;
 }
 
@@ -306,8 +422,9 @@ function renderOutfit(job) {
 
   if (stageSignature !== nextStage) {
     stageSignature = nextStage;
+    clearModelPreview(stage);
     if (isModel) {
-      stage.replaceChildren(modelViewer(job));
+      stage.append(modelViewer(job));
     } else if (job.images[view]) {
       const photo = el('img', undefined, 'outfit-photo');
       photo.src = job.images[view];

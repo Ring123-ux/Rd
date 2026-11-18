@@ -36,8 +36,8 @@
   },
   {
     "path": "dollfit/README.md",
-    "bytes": 13208,
-    "sha256": "186caa32640d3925fc1c9fd17f9eed33c96bac47b42455bc5ce90dfe3e5115d9"
+    "bytes": 13337,
+    "sha256": "9ad0708e42e96ebb4e5fbd9b5ff1a29202a02e376a97514f9ae1cf5f40333ede"
   },
   {
     "path": "dollfit/THIRD_PARTY.md",
@@ -376,8 +376,8 @@
   },
   {
     "path": "dollfit/runtime/cloud_app.py",
-    "bytes": 37141,
-    "sha256": "d492d59da1744e7de130738533331250d2f6c918205e7867d72d120ab04e55d0"
+    "bytes": 38087,
+    "sha256": "a09c771f63fefb4c2ef2b5ef50fc874baec9f09b33221fb62e1a6ef984c8786f"
   },
   {
     "path": "dollfit/runtime/cloud_measure.py",
@@ -431,13 +431,13 @@
   },
   {
     "path": "dollfit/tests/test_cloud.py",
-    "bytes": 23714,
-    "sha256": "6662243a5458ea5a58ec6aa9044de1315f687ef952c154ffdb0fa7580771a34f"
+    "bytes": 24984,
+    "sha256": "8d90303ef5fb5b2b483282d9da555b63bb1d6b7f030c66372a64f7374269361e"
   },
   {
     "path": "dollfit/tests/test_workbench.cjs",
-    "bytes": 20626,
-    "sha256": "e4929e6671095cdbeeeb727cf6e48caef7783df1ac965359cfb889c023a88bca"
+    "bytes": 22730,
+    "sha256": "12a5a9f4b0b204c77706fb0bedfcc6e27183a0b162c7e05578ae0b7ce6f853f3"
   },
   {
     "path": "dollfit/viewer.html",
@@ -456,8 +456,8 @@
   },
   {
     "path": "dollfit/wardrobe.js",
-    "bytes": 15343,
-    "sha256": "2b9f5f6502bf382c13e09bdce4813775552c39b180f5a10d019c812e31d3dfbe"
+    "bytes": 20097,
+    "sha256": "8b812a68207b025b75b3637675945d8989c5151f87036074cf454366b5db83cc"
   },
   {
     "path": "dollfit/workbench.css",
@@ -466,13 +466,13 @@
   },
   {
     "path": "dollfit/workbench.html",
-    "bytes": 10012,
-    "sha256": "c160a67dc39859978ac7d99aff667c46be007747625e5cd097ce6b4557156472"
+    "bytes": 10024,
+    "sha256": "af22e996ef8f60d2bcb4df1c07f608185abe75d9aab3fdc4eff1ca52eb80105a"
   },
   {
     "path": "dollfit/workbench.js",
-    "bytes": 13702,
-    "sha256": "5a898ec70849e2665ecd1a773c0863cc1e02fd08346d332c81275d15ecad3e64"
+    "bytes": 13703,
+    "sha256": "d6f84a224bbbc000e04d67fb8c458257df78a1b687d341c654823d1148f8caa9"
   },
   {
     "path": "render.production.yaml",
@@ -486,7 +486,7 @@
   },
   {
     "path": "验证报告.json",
-    "bytes": 2880,
-    "sha256": "8ef16ad1accbfbd174f8ef05f7f94a2c5f45fc5dc84185aaced91a106a4a4b2a"
+    "bytes": 3258,
+    "sha256": "90d6e865315ea461439ce38e688192a5d02dd70c2a2d25c9c7c7f68254fcf1a6"
   }
 ]

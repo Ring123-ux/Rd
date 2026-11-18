@@ -191,7 +191,7 @@ $('#show-example').onclick=()=>action(async()=>{
  $('#example-dialog').showModal();
 });
 $('#example-close').onclick=()=>$('#example-dialog').close();
-$('#example-dialog').addEventListener('close',()=>$('#example-preview').replaceChildren());
+$('#example-dialog').addEventListener('close',()=>clearModelPreview($('#example-preview')));
 
 $('#import-open').onclick=()=>{
  if(!current){openProfile();notify('先保存娃娃档案，再导入这只娃娃的试穿图。');return}
