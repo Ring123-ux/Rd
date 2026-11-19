@@ -1,4 +1,4 @@
-"""Restore checked model/example assets from GitHub-web-upload-sized parts."""
+"""Restore checked model assets from GitHub-web-upload-sized parts."""
 import hashlib
 import json
 from pathlib import Path
@@ -30,7 +30,7 @@ def restore(root=ROOT):
             for part in asset['parts']:
                 source = (root / 'bundled' / part['file']).resolve()
                 if not source.is_relative_to(root / 'bundled') or digest(source) != part['sha256']:
-                    raise ValueError('模型或实例分片缺失/损坏，请重新上传 bundled 文件夹。')
+                    raise ValueError('模型分片缺失/损坏，请重新上传 bundled 文件夹。')
                 with source.open('rb') as stream:
                     for block in iter(lambda: stream.read(1024 * 1024), b''):
                         output.write(block)

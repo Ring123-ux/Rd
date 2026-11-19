@@ -62,8 +62,6 @@
   flex-wrap: wrap;
 }
 
-.wardrobe-toolbar #show-example { margin-left: auto; }
-
 .fit .wardrobe-toolbar #import-open { margin-top: 0; }
 
 .wardrobe-grid {
@@ -164,8 +162,7 @@
   max-width: none;
   max-height: calc(100dvh - 24px);
   box-sizing: border-box;
-  overflow: auto;
-  overscroll-behavior: contain;
+  overflow: clip;
   text-align: left;
   padding: clamp(16px, 3vw, 30px);
   background: #fffaf3;
@@ -174,7 +171,6 @@
 
 .fit #outfit-dialog { width: min(1030px, calc(100vw - 24px)); }
 .fit #profile-dialog { width: min(690px, calc(100vw - 24px)); }
-.fit #example-dialog { width: min(720px, calc(100vw - 24px)); }
 .dialog-heading, .home-atelier-bar { justify-content: space-between; margin-bottom: 16px; }
 
 .profile-picker {
@@ -188,7 +184,7 @@
 .fit .profile-picker label { flex: 1; min-width: 0; margin: 0; }
 .profile-picker > button { flex: none; }
 .fit #profile-dialog .upload-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.fit #profile-dialog .photo-slot .thumb { height: 100px; }
+
 
 .wardrobe-close, .fit .wardrobe-close {
   display: grid;
@@ -241,7 +237,7 @@
   align-content: center;
   justify-items: center;
   min-width: 0;
-  min-height: 290px;
+  min-height: 0;
   gap: 10px;
   padding: 12px;
   border-radius: 18px;
@@ -250,20 +246,20 @@
 .outfit-stage .outfit-photo {
   display: block;
   width: 100%;
-  height: clamp(270px, 59vh, 550px);
+  height: min(50dvh, 485px);
   object-fit: contain;
 }
 .outfit-stage > a, .model-actions > a { font-size: 13px; color: #784d5a; text-decoration: underline; }
 .stage-empty { margin: 0; overflow-wrap: anywhere; text-align: center; }
 .outfit-model { width: 100%; min-width: 0; }
 .fit .outfit-model model-viewer {
-  height: clamp(285px, 58vh, 540px);
+  height: min(44dvh, 420px);
   background: radial-gradient(ellipse at 50% 76%, #fefcf5 18%, #ead5d6 90%);
 }
 .outfit-details { min-width: 0; }
 .outfit-details h3 { margin: 10px 0; }
 .outfit-details > .muted { margin-top: 0; }
-.outfit-description { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 135px; overflow: auto; }
+.outfit-description { white-space: pre-wrap; overflow-wrap: anywhere; -webkit-line-clamp: 4; -webkit-box-orient: vertical; display: -webkit-box; overflow: hidden; }
 .outfit-angles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .outfit-angles button {
   display: grid;
@@ -313,13 +309,8 @@ dialog.home-atelier[open] { display: grid; grid-template-rows: auto minmax(0, 1f
   .wardrobe-grid { gap: 9px; }
   .wardrobe-toolbar { gap: 6px; }
   .fit .wardrobe-toolbar .primary, .fit .wardrobe-toolbar .secondary, .fit #profile-open { padding: 8px 12px; font-size: 13px; }
-  .wardrobe-toolbar #show-example { margin-left: 0; }
   .fit #profile-dialog .upload-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .outfit-layout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .outfit-details .outfit-description { max-height: 86px; }
-  .outfit-stage .outfit-photo { height: min(39vh, 330px); }
-  .fit .outfit-model model-viewer { height: min(46vh, 380px); }
-  .fit .quality-options { grid-template-columns: 1fr; }
   .quality-options small { margin-top: 0; }
 }
 
@@ -328,4 +319,160 @@ dialog.home-atelier[open] { display: grid; grid-template-rows: auto minmax(0, 1f
   .fit .wardrobe-card { padding: 10px; }
   .wardrobe-banner { padding: 8px 12px; }
   .wardrobe-cover { max-height: 105px; }
+}
+
+
+body.fit:has(dialog[open]), body.landing:has(dialog[open]) { overflow: hidden; }
+
+.fit .atelier-dialog {
+  padding: clamp(10px, 2.2dvh, 22px) clamp(12px, 3vw, 26px);
+  line-height: 1.35;
+}
+.fit .atelier-dialog .dialog-heading { margin: 0 0 9px; gap: 8px; }
+.fit .dialog-heading h2 { font-size: clamp(18px, 3.2vw, 23px); line-height: 1.25; }
+.fit .dialog-heading h2, .fit .dialog-heading .eyebrow {
+  display: block;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.fit .dialog-heading > div { min-width: 0; }
+.fit .wardrobe-close { flex-basis: 34px; width: 34px; height: 34px; }
+.fit .atelier-dialog label { margin: 0 0 6px; line-height: 1.35; }
+.fit .atelier-dialog input:not([type=checkbox]):not([type=file]):not([type=radio]),
+.fit .atelier-dialog select,
+.fit .atelier-dialog textarea {
+  padding: 6px 9px;
+  margin-top: 3px;
+  border-radius: 9px;
+  min-height: 34px;
+  font-size: 16px;
+  line-height: 1.25;
+}
+.fit .atelier-dialog textarea { resize: none; }
+.fit .atelier-dialog .primary, .fit .atelier-dialog .secondary {
+  padding: 7px 12px;
+  font-size: 13px;
+  min-height: 34px;
+}
+.fit .atelier-dialog p { line-height: 1.45; margin: 7px 0; }
+.fit .atelier-dialog [data-notice] { padding: 6px 9px; font-size: 12px; overflow-wrap: anywhere; }
+
+.dialog-tabs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px;
+  margin: 0 0 9px;
+  border-radius: 13px;
+  background: #f2e8e0;
+}
+.fit .dialog-tabs button {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  box-shadow: none;
+  background: transparent;
+  color: #694e53;
+  font-size: 13px;
+  padding: 5px 4px;
+}
+.fit .dialog-tabs button[aria-pressed=true] {
+  border-color: #e7cfd1;
+  background: #fffaf3;
+  color: #754656;
+}
+
+.profile-picker { margin-bottom: 8px; padding-bottom: 0; border-bottom: 0; }
+.fit .profile-picker label { margin-bottom: 0; }
+.profile-fields { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, .85fr) minmax(0, .85fr); gap: 7px; }
+.profile-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 8px 0; }
+#tailoring-download { color: #784d5a; font-size: 13px; text-decoration: underline; padding: 5px; }
+.fit #profile-dialog .upload-grid { margin: 7px 0; gap: 6px; }
+.fit #profile-dialog .photo-slot { min-width: 0; padding: 6px; }
+.fit #profile-dialog .photo-slot label { font-size: 13px; margin: 0; }
+.fit #profile-dialog .photo-slot .thumb { height: clamp(40px, 10dvh, 90px); font-size: 12px; cursor: pointer; }
+.fit #profile-dialog .photo-slot input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.fit #profile-dialog .photo-slot:focus-within { outline: 2px solid #996676; outline-offset: 2px; }
+.fit #notes { height: 52px; min-height: 40px; }
+
+.manual-grid, .estimate-grid, .import-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 10px;
+}
+.fit .manual-grid { margin-bottom: 5px; }
+.fit .manual-grid label { margin: 0 0 5px; }
+#measurements { overflow-wrap: anywhere; }
+.estimate-grid { margin: 8px 0; font-size: 13px; }
+.estimate-grid div { display: flex; justify-content: space-between; gap: 4px; padding: 4px; border-bottom: 1px solid #efe2d7; }
+.estimate-grid dd { flex: none; margin: 0; }
+.fit #sizes-dialog { width: min(500px, calc(100vw - 24px)); }
+
+.fit #account-dialog, .fit #import-dialog, .fit #api-settings {
+  box-sizing: border-box;
+  width: min(480px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: clamp(10px, 2.2dvh, 20px);
+  overflow: clip;
+}
+.fit #account-form, .fit #import-form { gap: 7px; }
+.fit #account-form label, .fit #import-form label { margin: 0; gap: 3px; min-width: 0; }
+.fit #account-form input,.fit #account-form select { margin: 0; padding: 6px 8px; }
+.fit #account-form p, .fit #import-form p, .fit #settings-form p { margin: 0; line-height: 1.45; }
+.fit #account-form h2, .fit #import-form h2, .fit #settings-form h2 { margin: 0 25px 2px 0; font-size: 20px; }
+.fit #account-form .dialog-close, .fit #import-form .dialog-close { position: absolute; right: 0; top: 0; }
+.fit #account-error:empty, .fit #import-error:empty { display: none; }
+.fit #import-form input { min-width: 0; font-size: 12px; padding: 5px; }
+.fit #settings-form p { margin-bottom: 8px; }
+.fit #design-dialog .reference-row { margin-top: 0; gap: 7px; }
+.fit #design-dialog .reference-picker { padding: 6px 9px; margin: 0; }
+.fit #design-dialog .reference-picker input { margin-top: 3px; }
+.fit #design-dialog .reference-preview { margin: 5px 0; gap: 5px; }
+.fit #design-dialog .reference-preview:empty { display: none; }
+.fit #design-dialog .reference-preview img { width: 48px; height: clamp(28px, 7dvh, 44px); }
+.fit #design-dialog .quality-options { margin: 7px 0; gap: 4px; }
+.fit #design-dialog .quality-options label { padding: 5px; margin: 0; gap: 4px; line-height: 1.25; }
+.fit #design-dialog .quality-options small { line-height: 1.2; }
+.fit #design-dialog #prompt { height: clamp(70px, 17dvh, 120px); }
+
+.outfit-tabs { display: none; }
+.outfit-preview { min-width: 0; }
+#outfit-angle-picker { margin-top: 6px; }
+.fit #outfit-dialog .outfit-angles img { height: min(8dvh, 55px); }
+.outfit-description-download { color: #784d5a; font-size: 12px; text-decoration: underline; }
+.fit #outfit-dialog .wardrobe-3d { margin-top: 8px; padding: 8px; }
+.fit #outfit-dialog .wardrobe-3d h3 { margin: 0; font-size: 15px; }
+.fit #outfit-dialog .model-actions { gap: 6px; }
+
+@media (max-width: 680px), (max-height: 560px) {
+  .outfit-tabs { display: flex; }
+  .outfit-layout { grid-template-columns: minmax(0, 1fr); }
+  .outfit-layout[data-page=preview] .outfit-details,
+  .outfit-layout[data-page=details] .outfit-preview { display: none; }
+  .outfit-stage { padding: 6px; gap: 5px; }
+  .outfit-stage .outfit-photo { height: min(41dvh, 350px); }
+  .fit .outfit-model model-viewer { height: min(38dvh, 340px); }
+}
+@media (max-height: 420px) {
+  .fit .atelier-dialog { padding: 8px 12px; max-height: calc(100dvh - 12px); }
+  .fit .atelier-dialog .dialog-heading, .dialog-tabs, .profile-picker { margin-bottom: 4px; }
+  .fit #profile-dialog .upload-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .fit #profile-dialog .photo-slot label small { display: block; }
+  .fit #profile-dialog .profile-actions { margin: 4px 0; gap: 4px; }
+  .fit #profile-dialog #notes { height: 40px; }
+  .fit #profile-dialog .photo-slot { padding: 4px; }
+  .fit #profile-dialog .photo-slot .thumb { font-size: 10px; }
+  .fit .manual-grid, .fit .estimate-grid { gap: 3px 6px; }
+  .fit .atelier-dialog [data-notice] { padding: 3px 6px; }
+  .fit .outfit-model model-viewer { height: min(31dvh, 240px); }
 }

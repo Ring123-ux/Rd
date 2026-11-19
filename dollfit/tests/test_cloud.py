@@ -65,12 +65,16 @@ def profile(client, four=False):
     return response.json()
 
 
-def test_public_example_is_actual_highest_and_supports_range(client):
-    sample = client.get('/api/example').json()
-    assert sample['tripo']['face_count'] == 1500000
-    response = client.get(sample['tripo']['model_url'], headers={'Range': 'bytes=0-19'})
-    assert response.status_code == 206
-    assert response.content.startswith(b'glTF') and len(response.content) == 20
+def test_example_removed_and_public_images_revalidate(client):
+    assert client.get('/api/example').status_code == 404
+    assert client.get('/media/example/model.glb').status_code == 404
+    assert 'show-example' not in client.get('/workbench.html').text
+    image_url = '/assets/companion.svg'
+    image = client.get(image_url)
+    assert image.status_code == 200
+    assert image.headers['cache-control'] == 'public, max-age=86400'
+    cached = client.get(image_url, headers={'If-None-Match': image.headers['etag']})
+    assert cached.status_code == 304 and not cached.content
 
 
 def test_static_never_exposes_backend_secrets_or_database(client):
@@ -113,15 +117,56 @@ def test_profile_media_and_source_reuse_are_owner_scoped(client):
     account(client)
     p = profile(client)
     original = next(iter(p['photos'].values()))
-    assert client.get(original).status_code == 200
+    photo = client.get(original)
+    assert photo.status_code == 200
+    assert photo.headers['cache-control'] == 'private, no-cache, must-revalidate'
+    assert photo.headers['vary'] == 'Cookie'
+    cached_headers = {'If-None-Match': photo.headers['etag']}
+    cached = client.get(original, headers=cached_headers)
+    assert cached.status_code == 304 and not cached.content
     with TestClient(cloud.app) as second:
         account(second)
         assert second.get('/api/profile/' + p['id']).status_code == 404
-        assert second.get(original).status_code == 404
+        assert second.get(original, headers=cached_headers).status_code == 404
         assert send(second, 'profile', {'source_id': p['id'], 'height_cm': 17, 'gender': 'female', 'views': {}}).status_code == 404
         assert send(second, 'profile', {'profile_id': p['id'], 'height_cm': 17, 'gender': 'female', 'views': {}}).status_code == 404
         other = profile(second)
         assert other['project_id'] != p['project_id']
+
+
+def test_manual_sizes_and_tailoring_download(client):
+    account(client)
+    p = profile(client)
+    assert p['manual_measurements_cm'] == {}
+    metadata = client.get('/api/bootstrap').json()['measurement_fields']
+    assert len(metadata) == 13 and {'key': 'chest', 'name': '胸围'} in metadata
+    profile_url = '/api/profile/' + p['id']
+    tailoring_url = profile_url + '/tailoring'
+    update = {'profile_id': p['id'], 'name': '定制娃娃', 'height_cm': 17, 'gender': 'female',
+              'notes': '六分体特殊体，领口需要有开合。'}
+    values = {'chest': 9.75, 'leg-length': 8.2}
+    edited = send(client, 'profile', {**update, 'manual_measurements_cm': values})
+    assert edited.status_code == 200, edited.text
+    assert send(client, 'profile', update).json()['manual_measurements_cm'] == values
+    record = client.get(profile_url).json()
+    assert record['manual_measurements_cm'] == values
+    assert record['measurement'] == {'status': 'idle'}
+
+    response = client.get(tailoring_url)
+    assert response.status_code == 200
+    assert 'attachment' in response.headers['content-disposition']
+    assert response.headers['cache-control'] == 'no-store'
+    for text in ('定制娃娃', '身高：17 cm', '胸围  9.75 cm', '腿长  8.2 cm', update['notes']):
+        assert text in response.text
+    with TestClient(cloud.app) as second:
+        assert second.get(tailoring_url).status_code == 401
+        account(second)
+        assert second.get(tailoring_url).status_code == 404
+
+    for invalid in ({'chest': -1}, {'chest': True}, {'waist': '5'}, {'hip': 301}, {'neck': 4}, []):
+        assert send(client, 'profile', {**update, 'manual_measurements_cm': invalid}).status_code == 400
+    assert client.get(profile_url).json()['manual_measurements_cm'] == values
+    assert send(client, 'profile', {**update, 'manual_measurements_cm': {}}).json()['manual_measurements_cm'] == {}
 
 
 def test_required_angles_and_height_are_validated(client):
@@ -284,7 +329,6 @@ def test_full_design_to_3d_chain_uses_real_files_and_no_extra_paid_post(client, 
         cached_image = client.get(artwork, headers={'If-None-Match': stored_image.headers['etag']})
         assert cached_image.status_code == 304 and cached_image.content == b''
         assert cached_image.headers['vary'] == 'Cookie'
-    assert client.get(p['photos']['front']).headers['cache-control'] == 'no-store'
     with TestClient(cloud.app) as another:
         assert another.get(result['tripo']['model_url'], headers=etag).status_code == 401
         account(another)

@@ -14,6 +14,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from urllib.parse import urlsplit
@@ -34,11 +35,12 @@ LOCK = threading.RLock()
 ACTIVE = set()
 EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix='dollfit-job')
 VIEWS = wardrobe.VIEWS
-EXAMPLE = 'bd0228c40529495eaa48e3f614002e64'
 SECURE_COOKIE = bool(os.environ.get('RENDER')) or os.environ.get('APP_URL', '').startswith('https://')
 COOKIE = 'dollfit_session'
-VERSION = '2026.11.19-model-preview'
+VERSION = '2026.11.19-tailoring'
 MEASUREMENT_INPUTS = ('project_id', 'height_cm', 'gender')
+metadata = json.loads((APP_ROOT / 'models/model_metadata.json').read_text(encoding='utf-8'))
+MEASUREMENT_FIELDS = dict(zip(metadata['measurements'], metadata['labels_zh'], strict=True))
 
 
 def fail(message, status=400):
@@ -93,19 +95,19 @@ def job_view(job):
 def profile_view(profile, user):
     output = dict(profile)
     output.pop('owner_id', None)
+    output.setdefault('manual_measurements_cm', {})
     output['photos'] = {v: f'/media/original/{profile["project_id"]}/{v}.png' for v in profile['views']}
     output['designs'] = [job_view(read_job(jid, user)) for jid in reversed(profile['jobs'])]
     return output
 
 
-def example_view():
-    return {'id': EXAMPLE, 'status': 'succeeded', 'prompt': '森系开衫与百褶裙 · 最高质量展示实例', 'errors': {},
-            'view_status': {v: 'succeeded' for v in VIEWS},
-            'images': {v: f'/media/example/{v}_dressed.png' for v in VIEWS},
-            'tripo': {'status': 'succeeded', 'progress': 100, 'is_example': True, 'face_count': 1500000,
-                      'actual_model_version': 'v3.0-20250812', 'preset': 'highest',
-                      'message': '已实测生成的150万面PBR实例，可直接在当前页面旋转浏览。',
-                      'model_url': '/media/example/model.glb'}}
+def validate_manual_measurements(values):
+    if not isinstance(values, dict) or values.keys() - MEASUREMENT_FIELDS.keys():
+        raise ValueError('实测尺寸包含无法识别的项目。')
+    for key, value in values.items():
+        if type(value) not in (int, float) or not 0 < value <= 300:
+            raise ValueError(f'{MEASUREMENT_FIELDS[key]}须大于 0 且不超过 300 cm。')
+    return values
 
 
 def image(value):
@@ -159,14 +161,14 @@ def measure(pid, owner):
     wardrobe.write_json(source, config)
     try:
         # Provider tokens and account secrets are not needed by a neural inference child.
-        environment = dict(os.environ)
+        environment = {**os.environ, 'PYTHONIOENCODING': 'utf-8'}
         for key in ('HEJU_API_KEY', 'TRIPO_API_KEY', 'APP_SECRET', 'INVITE_CODE', 'ADMIN_PASSWORD'):
             environment.pop(key, None)
         process = subprocess.run([sys.executable, '-m', 'runtime.cloud_measure', str(source), str(output)],
                                  cwd=APP_ROOT, env=environment, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=240)
         if process.returncode:
             detail = process.stderr.strip().splitlines()[-1] if process.stderr.strip() else '推理进程未正常结束。'
-            raise ValueError('尺寸预测未完成：' + detail + ' 免费实例可能内存不足，请升级后再试。')
+            raise ValueError('尺寸预测未完成：' + detail)
         result = wardrobe.read_json(output)
     except Exception as error:
         result = {'status': 'failed', 'error': redact(error)}
@@ -355,6 +357,7 @@ def bootstrap(request: Request):
     is_ephemeral = str(ROOT).replace('\\', '/').startswith('/tmp/') or os.environ.get('DATA_EPHEMERAL') == 'true'
     response = JSONResponse({'token': auth.csrf(session if user else guest), 'user': user,
         'profiles': sorted(profiles, key=lambda p: p['created_at'], reverse=True),
+        'measurement_fields': [{'key': key, 'name': name} for key, name in MEASUREMENT_FIELDS.items()],
         'image_configured': bool(os.environ.get('HEJU_API_KEY')), 'tripo_configured': tripo.configured(),
         'tripo_base': tripo.base_url(), 'tripo_provider': tripo.provider_name(), 'quality': 'highest',
         'tripo_face_counts': tripo.seller.FACE_COUNTS if tripo.provider_name() == 'seller' else [],
@@ -363,11 +366,6 @@ def bootstrap(request: Request):
     if request.cookies.get('dollfit_guest') != guest:
         response.set_cookie('dollfit_guest', guest, httponly=True, secure=SECURE_COOKIE, samesite='lax', max_age=14 * 86400)
     return response
-
-
-@app.get('/api/example')
-def example():
-    return example_view()
 
 
 @app.get('/api/profile/{pid}')
@@ -379,6 +377,28 @@ def get_profile(pid: str, request: Request):
         return profile_view(read_profile(pid, user), user)
     except (ValueError, FileNotFoundError, KeyError):
         return fail('档案不存在。', 404)
+
+
+@app.get('/api/profile/{pid}/tailoring')
+def download_tailoring_profile(pid: str, request: Request):
+    user = auth.user(request.cookies.get(COOKIE))
+    if not user:
+        return fail('请先登录。', 401)
+    try:
+        profile = read_profile(pid, user)
+    except (ValueError, FileNotFoundError, KeyError):
+        return fail('档案不存在。', 404)
+    sizes = profile.get('manual_measurements_cm', {})
+    rows = [f'{name}  {sizes[key]:g} cm' for key, name in MEASUREMENT_FIELDS.items() if key in sizes]
+    lines = [
+        '娃衣小筑 · 定制档案', '',
+        '娃娃：' + profile['name'],
+        f'身高：{profile["height_cm"]:g} cm',
+        '', '用户填写的实测尺寸', *(rows or ['尚未填写']),
+        '', '定制备注', profile.get('notes') or '无',
+    ]
+    return Response('\n'.join(lines) + '\n', media_type='text/plain',
+                    headers={'Content-Disposition': 'attachment; filename="dollfit-tailoring.txt"'})
 
 
 @app.get('/api/job/{jid}')
@@ -403,7 +423,10 @@ def post(path, body, user, request_id):
             result['input_source'] = tripo_inputs.mode(tripo.provider_name())
             if body.get('probe_upload'):
                 before = result.get('usage_count')
-                tripo.upload(APP_ROOT / 'examples/front_dressed.png', tripo.provider_name())
+                with tempfile.TemporaryDirectory() as directory:
+                    probe = Path(directory) / 'connection-probe.png'
+                    Image.new('RGB', (256, 256), '#e8dfce').save(probe)
+                    tripo.upload(probe, tripo.provider_name())
                 after = tripo.preflight(require_balance=False)
                 result['upload_probe'] = {'passed': True, 'generation_created': False,
                                           'usage_before': before, 'usage_after': after.get('usage_count')}
@@ -415,6 +438,8 @@ def post(path, body, user, request_id):
             editing = body.get('profile_id')
             source = editing or body.get('source_id')
             previous = read_profile(source, user) if source else None
+            manual = body.get('manual_measurements_cm', previous.get('manual_measurements_cm', {}) if editing else {})
+            manual = validate_manual_measurements(manual)
             if not editing and sum(1 for x in PROFILES.glob('*/profile.json') if wardrobe.read_json(x).get('owner_id') == user['id']) >= 50:
                 raise ValueError('每个账户最多保存50份档案。')
             pictures = {view: image(value) for view, value in body.get('views', {}).items() if view in VIEWS and value}
@@ -436,7 +461,7 @@ def post(path, body, user, request_id):
             }
             profile.update(name=str(body.get('name', '我的娃娃')).strip()[:40] or '我的娃娃',
                            height_cm=height, gender=body['gender'], notes=str(body.get('notes', ''))[:1000],
-                           project_id=project_id, views=views)
+                           project_id=project_id, views=views, manual_measurements_cm=manual)
             if editing and any(profile[key] != previous[key] for key in MEASUREMENT_INPUTS):
                 profile['measurement'] = {'status': 'idle'}
             write_profile(profile)
@@ -644,14 +669,6 @@ async def api_post(path: str, request: Request):
         return fail(error)
 
 
-@app.get('/media/example/{name}')
-def example_file(name: str):
-    if name not in ['model.glb'] + [v + '_dressed.png' for v in VIEWS]:
-        return fail('文件不存在。', 404)
-    return FileResponse(APP_ROOT / 'examples' / name, media_type='model/gltf-binary' if name.endswith('.glb') else 'image/png',
-                        headers={'Cache-Control': 'public, max-age=86400'})
-
-
 @app.get('/tripo-input/{jid}/{view}.png')
 def provider_input(jid: str, view: str, request: Request):
     if not tripo_inputs.valid(jid, view, request.query_params.get('expires'), request.query_params.get('signature', '')):
@@ -664,6 +681,20 @@ def provider_input(jid: str, view: str, request: Request):
         return FileResponse(file, media_type='image/png', headers={'Cache-Control': 'private, no-store'})
     except (ValueError, FileNotFoundError):
         return fail('试穿图不存在。', 404)
+
+
+def cached_media(request, file, media_type=None, *, private=False):
+    stat = file.stat()
+    headers = {'Cache-Control': 'private, no-cache, must-revalidate' if private else 'public, max-age=86400'}
+    if private:
+        headers['Vary'] = 'Cookie'
+    if file.suffix == '.glb':
+        headers['X-File-Size'] = str(stat.st_size)
+    response = FileResponse(file, media_type=media_type, stat_result=stat, headers=headers)
+    tags = request.headers.get('If-None-Match', '').split(',')
+    if any(tag.strip().removeprefix('W/') in ('*', response.headers['etag']) for tag in tags):
+        return Response(status_code=304, headers={**headers, 'ETag': response.headers['etag']})
+    return response
 
 
 @app.get('/media/{kind}/{record}/{name}')
@@ -688,25 +719,13 @@ def media_file(kind: str, record: str, name: str, request: Request):
         if not file.is_file():
             raise FileNotFoundError()
         media_type = {'.glb': 'model/gltf-binary', '.jpg': 'image/jpeg'}.get(file.suffix, 'image/png')
-        if kind == 'design':
-            # Every cache revalidation goes through the account and job ownership checks above.
-            stat = file.stat()
-            headers = {'Cache-Control': 'private, no-cache, must-revalidate', 'Vary': 'Cookie'}
-            if file.suffix == '.glb':
-                headers['X-File-Size'] = str(stat.st_size)
-            file_response = FileResponse(file, media_type=media_type, stat_result=stat, headers=headers)
-            cached_tags = request.headers.get('If-None-Match', '').split(',')
-            if any(tag.strip().removeprefix('W/') in ('*', file_response.headers['etag']) for tag in cached_tags):
-                return Response(status_code=304, headers={key: file_response.headers[key]
-                    for key in ('ETag', 'Cache-Control', 'Vary')})
-            return file_response
-        return FileResponse(file, media_type=media_type)
+        return cached_media(request, file, media_type, private=True)
     except (ValueError, FileNotFoundError):
         return fail('文件不存在。', 404)
 
 
 @app.get('/{path:path}')
-def static_file(path: str):
+def static_file(path: str, request: Request):
     target = (APP_ROOT / (path or 'index.html')).resolve()
     if not target.is_relative_to(APP_ROOT) or target.suffix.lower() not in ('.html', '.css', '.js', '.png', '.jpg', '.webp', '.svg', '.ttf', '.woff2', '.wasm'):
         return fail('页面不存在。', 404)
@@ -715,4 +734,6 @@ def static_file(path: str):
         return fail('页面不存在。', 404)
     if not target.is_file():
         return fail('页面不存在。', 404)
+    if target.suffix.lower() in ('.png', '.jpg', '.webp', '.svg'):
+        return cached_media(request, target)
     return FileResponse(target, media_type='application/wasm' if target.suffix == '.wasm' else None)

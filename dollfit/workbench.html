@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>娃衣小筑 · 设计工作台</title><link rel="stylesheet" href="style.css?v=12"><link rel="stylesheet" href="font-fix.css"><link rel="stylesheet" href="workbench.css"><link rel="stylesheet" href="cloud.css?v=20261118-landing"><link rel="stylesheet" href="wardrobe.css?v=20261118-landing"><script type="module" src="assets/3d/load-model-viewer.js?v=20261118"></script><script defer src="workbench.js?v=20261119-model-preview"></script><script defer src="wardrobe.js?v=20261119-model-preview"></script><script defer src="auth.js?v=20261118-landing"></script></head>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>娃衣小筑 · 设计工作台</title><link rel="stylesheet" href="style.css?v=12"><link rel="stylesheet" href="font-fix.css"><link rel="stylesheet" href="workbench.css"><link rel="stylesheet" href="cloud.css?v=20261118-landing"><link rel="stylesheet" href="wardrobe.css?v=20261119-tailoring"><script type="module" src="assets/3d/load-model-viewer.js?v=20261118"></script><script defer src="workbench.js?v=20261119-tailoring"></script><script defer src="wardrobe.js?v=20261119-tailoring"></script><script defer src="auth.js?v=20261118-landing"></script></head>
 <body class="fit"><header><a class="brand" href="index.html"><img class="dragon" src="assets/companion.svg" alt="布偶店长">娃衣小筑</a><nav><a href="index.html">回到小屋</a><a href="#" id="settings-link">接口设置</a></nav><div class="account-actions"><a href="#" id="account-link">登录 / 注册</a><button type="button" id="logout-button" class="text-button" hidden>退出</button></div></header>
 <main class="fit-main">
   <section class="design-card wardrobe-card" id="design" aria-labelledby="wardrobe-title">
@@ -10,7 +10,6 @@
     <div class="wardrobe-toolbar">
       <button type="button" class="primary" id="design-open" aria-haspopup="dialog">＋ 开始设计</button>
       <button type="button" class="secondary" id="import-open" aria-haspopup="dialog">导入四视图</button>
-      <button type="button" class="text-button" id="show-example" aria-haspopup="dialog">3D实例</button>
     </div>
     <div id="designs" class="wardrobe-grid"></div>
     <div id="wardrobe-pages" class="wardrobe-pages" hidden>
@@ -28,20 +27,64 @@
     <label>选择娃娃<select id="saved-profiles"><option value="">新建娃娃档案</option></select></label>
     <button type="button" id="new-profile" class="secondary">＋ 新建档案</button>
   </div>
-  <p data-notice role="status" hidden></p>
-  <form id="profile-form"><label>娃娃昵称<input id="name" maxlength="40" value="我的BJD"></label><div class="metadata"><label>身高 · cm<input id="height" type="number" min="0.1" max="300" step="0.1" value="17" required></label><label>模型性别分类<select id="gender"><option value="female">女</option><option value="male">男</option></select></label></div><p class="muted">不需要体重。请拍摄同一娃体，站姿与光线保持一致，完整露出头顶和脚底。</p><div id="upload-grid" class="upload-grid"></div><label>品牌 / 型号 / 测量备注<textarea id="notes" maxlength="1000" rows="2" placeholder="例如：17cm娃体、拍摄姿态、已知实测尺寸"></textarea></label><button id="save-profile" class="primary wide" type="submit">保存并回到衣柜</button><p id="profile-account-hint" class="muted">登录后即可保存档案。点击保存按钮登录，已选照片会保留。</p></form><p id="profile-status" class="muted">正面和左侧面必需；生成完整四视图3D时，还需背面与右侧面。</p><button id="measure" class="secondary wide" disabled>预测13项尺寸</button><details id="measurement-details"><summary>查看尺寸档案</summary><div id="measurements"><p class="muted">保存原图后即可预测。结果不会从穿衣图计算。</p></div></details>
-  <p class="muted">尺寸由原始娃体照片估测，制作前请结合实物尺寸复核。</p>
+  <div class="dialog-tabs" role="group" aria-label="档案内容">
+    <button type="button" data-profile-page="info" aria-pressed="true">基本信息</button>
+    <button type="button" data-profile-page="photos" aria-pressed="false">原始照片</button>
+  </div>
+  <form id="profile-form">
+    <div id="profile-info">
+      <div class="profile-fields">
+        <label>娃娃昵称<input id="name" maxlength="40" value="我的BJD"></label>
+        <label>身高 · cm<input id="height" type="number" min="0.1" max="300" step="any" value="17" required></label>
+        <label>模型性别<select id="gender"><option value="female">女</option><option value="male">男</option></select></label>
+      </div>
+      <label>定制备注<textarea id="notes" maxlength="1000" rows="2" placeholder="例如：六分体特殊体、品牌型号、需要避开肩部关节"></textarea></label>
+      <div class="profile-actions">
+        <button type="button" id="manual-open" class="secondary" aria-haspopup="dialog">＋ 添加实测尺寸</button>
+        <button type="button" id="estimate-open" class="secondary" aria-haspopup="dialog">AI 估测</button>
+        <a id="tailoring-download" download hidden>下载给商家的档案</a>
+      </div>
+    </div>
+    <div id="profile-photos" hidden>
+      <p id="profile-status" class="muted">正面和左侧面必需；完整四视图还需要背面与右侧面。</p>
+      <div id="upload-grid" class="upload-grid"></div>
+    </div>
+    <p data-notice role="status" hidden></p>
+    <p id="profile-account-hint" class="muted">登录后可保存，已选照片会保留。</p>
+    <button id="save-profile" class="primary wide" type="submit">保存并回到衣柜</button>
+  </form>
 </dialog>
-<dialog id="example-dialog" class="atelier-dialog" aria-labelledby="example-title">
-  <div class="dialog-heading"><h2 id="example-title">3D试穿实例</h2><button type="button" id="example-close" class="wardrobe-close" aria-label="关闭3D实例">×</button></div>
-  <div id="example-preview"></div>
+<dialog id="sizes-dialog" class="atelier-dialog" aria-labelledby="sizes-title">
+  <div class="dialog-heading"><h2 id="sizes-title">实测尺寸 · cm</h2><button type="button" id="sizes-close" class="wardrobe-close" aria-label="关闭尺寸窗口">×</button></div>
+  <form id="sizes-form">
+    <p class="muted">按需要填写，留空表示未测量。应用后请保存娃娃档案。</p>
+    <div class="dialog-tabs" role="group" aria-label="实测部位">
+      <button type="button" data-size-page="0" aria-pressed="true">躯干</button>
+      <button type="button" data-size-page="1" aria-pressed="false">手臂</button>
+      <button type="button" data-size-page="2" aria-pressed="false">腿脚</button>
+    </div>
+    <div id="manual-fields"></div>
+    <button type="submit" class="primary wide">应用实测尺寸</button>
+  </form>
+  <div id="estimate-panel" hidden>
+    <div id="measurements" aria-live="polite"></div>
+    <p data-notice role="status" hidden></p>
+    <button type="button" id="measure" class="secondary wide" disabled>预测13项尺寸</button>
+  </div>
 </dialog>
-<dialog id="api-settings"><form id="settings-form"><button type="button" class="dialog-close" aria-label="关闭">×</button><span class="eyebrow">让灵感连接起来</span><h2>接口设置</h2><p id="api-status"></p><p class="muted">3D生成规格由服务器统一管理。</p><select id="tripo-base" hidden><option value="http://47.120.44.134/tripo3d">seller</option><option value="https://openapi.tripo3d.com/v3">official</option><option value="https://openapi.tripo3d.ai/v3">official</option></select><input id="tripo-key" type="hidden"><p class="muted">密钥由管理员在 Render 的 Environment 中设置；网页不会读取或修改密钥。</p> <button type="button" id="test-tripo" class="secondary">测试已保存的连接</button></form></dialog><dialog id="account-dialog"><form id="account-form"><button type="button" id="account-close" class="dialog-close" aria-label="关闭">×</button><span class="eyebrow">YOUR LITTLE ATELIER</span><h2>欢迎回到娃衣小筑</h2><p class="muted">登录后保存你的娃娃档案，设计属于它的新衣服。公开实例可以直接浏览。</p><label>进入方式<select id="account-mode"><option value="login">登录已有账户</option><option value="register">使用邀请码注册</option></select></label><label>用户名<input id="account-username" autocomplete="username" minlength="3" maxlength="32" pattern="[A-Za-z0-9_\-]{3,32}" placeholder="3～32位英文、数字或下划线" required></label><label>密码<input id="account-password" type="password" autocomplete="current-password" maxlength="128" required></label><label id="invite-label" hidden>邀请码<input id="invite-code" autocomplete="off" maxlength="128" placeholder="向管理员获取邀请码"></label><p id="account-error" role="alert"></p><button class="primary wide" id="account-submit" type="submit">登录</button></form></dialog><dialog id="import-dialog"><form id="import-form"><button type="button" id="import-close" class="dialog-close" aria-label="关闭">×</button><h2>导入已有服装四视图</h2><p class="muted">选择已经穿好同一套衣服的四张图。导入不会调用生图接口，完成后再点击生成3D。</p><label>正面<input id="import-front" type="file" accept="image/png,image/jpeg,image/webp" required></label><label>左侧面<input id="import-left" type="file" accept="image/png,image/jpeg,image/webp" required></label><label>背面<input id="import-back" type="file" accept="image/png,image/jpeg,image/webp" required></label><label>右侧面<input id="import-right" type="file" accept="image/png,image/jpeg,image/webp" required></label><p id="import-error" class="error-note" role="alert"></p><button class="primary wide" type="submit" id="import-submit">导入这4张试穿图</button></form></dialog>
+<dialog id="api-settings"><form id="settings-form"><button type="button" class="dialog-close" aria-label="关闭">×</button><span class="eyebrow">让灵感连接起来</span><h2>接口设置</h2><p id="api-status"></p><p class="muted">3D生成规格由服务器统一管理。</p><select id="tripo-base" hidden><option value="http://47.120.44.134/tripo3d">seller</option><option value="https://openapi.tripo3d.com/v3">official</option><option value="https://openapi.tripo3d.ai/v3">official</option></select><input id="tripo-key" type="hidden"><p class="muted">密钥由管理员在 Render 的 Environment 中设置；网页不会读取或修改密钥。</p> <button type="button" id="test-tripo" class="secondary">测试已保存的连接</button></form></dialog><dialog id="account-dialog"><form id="account-form"><button type="button" id="account-close" class="dialog-close" aria-label="关闭">×</button><span class="eyebrow">YOUR LITTLE ATELIER</span><h2>欢迎回到娃衣小筑</h2><p class="muted">登录后保存你的娃娃档案，设计属于它的新衣服。</p><label>进入方式<select id="account-mode"><option value="login">登录已有账户</option><option value="register">使用邀请码注册</option></select></label><label>用户名<input id="account-username" autocomplete="username" minlength="3" maxlength="32" pattern="[A-Za-z0-9_\-]{3,32}" placeholder="3～32位英文、数字或下划线" required></label><label>密码<input id="account-password" type="password" autocomplete="current-password" maxlength="128" required></label><label id="invite-label" hidden>邀请码<input id="invite-code" autocomplete="off" maxlength="128" placeholder="向管理员获取邀请码"></label><p id="account-error" role="alert"></p><button class="primary wide" id="account-submit" type="submit">登录</button></form></dialog><dialog id="import-dialog"><form id="import-form"><button type="button" id="import-close" class="dialog-close" aria-label="关闭">×</button><h2>导入已有服装四视图</h2><p class="muted">选择已经穿好同一套衣服的四张图。导入不会调用生图接口，完成后再点击生成3D。</p><div class="import-fields"><label>正面<input id="import-front" type="file" accept="image/png,image/jpeg,image/webp" required></label><label>左侧面<input id="import-left" type="file" accept="image/png,image/jpeg,image/webp" required></label><label>背面<input id="import-back" type="file" accept="image/png,image/jpeg,image/webp" required></label><label>右侧面<input id="import-right" type="file" accept="image/png,image/jpeg,image/webp" required></label></div><p id="import-error" class="error-note" role="alert"></p><button class="primary wide" type="submit" id="import-submit">导入这4张试穿图</button></form></dialog>
 <dialog id="design-dialog" class="atelier-dialog" aria-labelledby="design-title">
   <div class="dialog-heading"><div><p class="eyebrow" id="design-doll"></p><h2 id="design-title">设计一套新娃衣</h2></div><button type="button" id="design-close" class="wardrobe-close" aria-label="关闭设计窗口">×</button></div>
   <form id="design-form">
+    <div class="dialog-tabs" role="group" aria-label="设计设置">
+      <button type="button" data-design-page="style" aria-pressed="true">款式与描述</button>
+      <button type="button" data-design-page="options" aria-pressed="false">参考图与画质</button>
+    </div>
+    <div id="design-style">
     <label>给这套衣服取个名字 <span class="muted">选填</span><input id="outfit-name" maxlength="60" placeholder="例如：莓果下午茶"></label>
     <label>今天想给它穿什么？<textarea id="prompt" maxlength="5000" rows="4" required placeholder="例如：一件柔粉色的蕾丝连衣裙，搭配杏色小披肩和棕色玛丽珍鞋。"></textarea></label>
+    </div>
+    <div id="design-options" hidden>
     <div class="reference-row"><label class="reference-picker">添加服装参考图<input id="references" type="file" accept="image/png,image/jpeg,image/webp" multiple></label><span class="muted">选填，最多3张</span></div>
     <div id="reference-preview" class="reference-preview"></div>
     <fieldset class="quality-options">
@@ -50,6 +93,7 @@
       <label><input type="radio" name="image-quality" value="medium"><span><strong>均衡</strong><small>兼顾用时和服装细节。</small></span></label>
       <label><input type="radio" name="image-quality" value="high" checked><span><strong>精细</strong><small>更适合看面料和纹样，通常较慢。</small></span></label>
     </fieldset>
+    </div>
     <p id="design-angles" class="muted"></p>
     <p data-notice role="status" hidden></p>
     <button id="generate" type="submit" class="primary wide" disabled>生成试穿图</button>
@@ -58,8 +102,15 @@
 <dialog id="outfit-dialog" class="atelier-dialog" aria-labelledby="outfit-title">
   <div class="dialog-heading"><div><p class="eyebrow" id="outfit-doll"></p><h2 id="outfit-title">试穿详情</h2></div><button type="button" id="outfit-close" class="wardrobe-close" aria-label="关闭试穿详情">×</button></div>
   <p data-notice role="status" hidden></p>
-  <div class="outfit-layout">
-    <div id="outfit-stage" class="outfit-stage"></div>
+  <div class="dialog-tabs outfit-tabs" role="group" aria-label="试穿详情页面">
+    <button type="button" data-outfit-page="preview" aria-pressed="true">试穿预览</button>
+    <button type="button" data-outfit-page="details" aria-pressed="false">款式与 3D</button>
+  </div>
+  <div class="outfit-layout" data-page="preview">
+    <div class="outfit-preview">
+      <div id="outfit-stage" class="outfit-stage"></div>
+      <div id="outfit-angle-picker"></div>
+    </div>
     <div id="outfit-details" class="outfit-details"></div>
   </div>
 </dialog>

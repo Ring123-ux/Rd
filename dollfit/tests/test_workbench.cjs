@@ -5,6 +5,8 @@ const path=require('node:path');
 const vm=require('node:vm');
 const {JSDOM}=require('jsdom');
 const root=path.resolve(__dirname,'..');
+const metadata=require('../models/model_metadata.json');
+const measurementFields=metadata.measurements.map((key,index)=>({key,name:metadata.labels_zh[index]}));
 const USER={id:'a'.repeat(32),name:'alice',admin:false};
 const OTHER={id:'b'.repeat(32),name:'bob',admin:false};
 
@@ -24,7 +26,7 @@ async function page(options={}){
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};
  w.HTMLDialogElement.prototype.close=function(){if(!this.open)return;this.open=false;this.dispatchEvent(new w.Event('close'))};
  if(options.noRandomUUID)Object.defineProperty(w.crypto,'randomUUID',{value:undefined,configurable:true});
- function bootstrap(){return {token:'test-csrf',user:state.user,profiles:state.user?state.profiles.map(p=>({id:p.id,name:p.name})):[],tripo_base:'http://47.120.44.134/tripo3d',tripo_face_counts:[500000,1000000,1500000],image_configured:true,tripo_configured:true,ephemeral_storage:false}}
+ function bootstrap(){return {token:'test-csrf',user:state.user,measurement_fields:measurementFields,profiles:state.user?state.profiles.map(p=>({id:p.id,name:p.name})):[],tripo_base:'http://47.120.44.134/tripo3d',tripo_face_counts:[500000,1000000,1500000],image_configured:true,tripo_configured:true,ephemeral_storage:false}}
  w.fetch=async (url,init={})=>{
   const endpoint=url.replace('/api/',''),body=init.body?JSON.parse(init.body):undefined;
   calls.push({endpoint,body,headers:init.headers});let status=200,data;
@@ -41,7 +43,7 @@ async function page(options={}){
     if(options.saveGate)await options.saveGate.promise;
     data=state.profiles.find(profile=>profile.id===body.profile_id);
     if(!data){data=makeProfile('d'.repeat(32),body.name);state.profiles.unshift(data)}
-    Object.assign(data,{name:body.name,height_cm:body.height_cm,gender:body.gender,notes:body.notes});state.saved++;
+    Object.assign(data,{name:body.name,height_cm:body.height_cm,gender:body.gender,notes:body.notes,manual_measurements_cm:body.manual_measurements_cm});state.saved++;
    }
   }else if(endpoint.startsWith('profile/')){
    data=state.profiles.find(p=>p.id===endpoint.slice(8));if(!data){status=404;data={error:'档案不存在'}}
@@ -372,5 +374,35 @@ test('the wardrobe pages keep one row and still open an older outfit',async()=>{
   assert.equal(p.w.document.querySelectorAll('.wardrobe-item').length,1);
   p.$('.wardrobe-item').click();
   assert.equal(p.$('#outfit-title').textContent,'衣服5');
+ }finally{p.dom.window.close()}
+});
+
+
+test('manual sizes across tabs are saved with tailoring notes and can be exported', async()=>{
+ const profile=makeProfile(),p=await page({user:USER,profiles:[profile]});
+ try{
+  await until(()=>p.$('#wardrobe-title').textContent.includes(profile.name));
+  p.$('#profile-open').click();
+  assert.ok(p.$('#tailoring-download').href.endsWith('/'+profile.id+'/tailoring'));
+  p.$('#manual-open').click();
+  p.$('[data-measurement=chest]').value='9.75';
+  p.$('[data-size-page="2"]').click();
+  p.$('[data-measurement=leg-length]').value='8.2';
+  p.$('#sizes-form').requestSubmit();
+  assert.equal(p.$('#sizes-dialog').open,false);
+  assert.ok(p.$('#tailoring-download').hidden);
+  p.$('#notes').value='六分体特殊体';
+  p.$('[data-profile-page=photos]').click();
+  assert.ok(p.$('#profile-info').hidden);
+  assert.ok(!p.$('#profile-photos').hidden);
+  p.$('#profile-form').requestSubmit();
+  await until(()=>p.state.saved===1&&!p.$('#profile-dialog').open);
+  const save=p.calls.find(call=>call.endpoint==='profile');
+  assert.deepEqual(save.body.manual_measurements_cm,{chest:9.75,'leg-length':8.2});
+  assert.equal(save.body.notes,'六分体特殊体');
+  p.$('#profile-open').click();
+  assert.ok(!p.$('#tailoring-download').hidden);
+  p.$('#manual-open').click();
+  assert.equal(p.$('[data-measurement=chest]').value,'9.75');
  }finally{p.dom.window.close()}
 });

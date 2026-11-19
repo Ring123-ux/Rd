@@ -88,5 +88,20 @@
     "live_final_range_matches_local_example": true,
     "private_outfit_download_verified": false,
     "new_paid_generations": 0
+  },
+  "tailoring_profile_release": {
+    "version": "2026.11.19-tailoring",
+    "backend_checks": 33,
+    "ui_flow_checks": 23,
+    "local_browser_viewports_verified": [
+      "1280x720",
+      "390x650",
+      "320x568"
+    ],
+    "manual_sizes_and_notes_saved": true,
+    "tailoring_attachment_verified": true,
+    "public_and_owned_images_revalidation_verified": true,
+    "bundled_3d_example_removed": true,
+    "new_paid_generations": 0
   }
 }

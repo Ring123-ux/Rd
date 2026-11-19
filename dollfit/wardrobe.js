@@ -97,11 +97,21 @@ for (const layout of [mediumWardrobe, wideWardrobe]) {
   layout?.addEventListener?.('change', () => renderDesigns(current?.designs));
 }
 
+function outfitPage(page) {
+  selectDialogPage('outfit', page);
+  $('.outfit-layout').dataset.page = page;
+}
+
+for (const button of document.querySelectorAll('[data-outfit-page]')) {
+  button.onclick = () => outfitPage(button.dataset.outfitPage);
+}
+
 function openOutfit(id) {
   const job = current?.designs.find(item => item.id === id);
   if (!job) return;
   openedOutfitId = id;
   selectedOutfitView = 'front';
+  outfitPage('preview');
   detailSignature = stageSignature = '';
   $('#outfit-dialog [data-notice]').hidden = true;
   renderOutfit(job);
@@ -113,6 +123,7 @@ function clearOutfit() {
   detailSignature = stageSignature = '';
   clearModelPreview($('#outfit-stage'));
   $('#outfit-details').replaceChildren();
+  $('#outfit-angle-picker').replaceChildren();
 }
 
 function clearModelPreview(container) {
@@ -409,7 +420,7 @@ function selectMedia(id, view) {
   if (!job || openedOutfitId !== id) return;
   selectedOutfitView = view;
   renderOutfit(job);
-  if (view === 'model') $('#outfit-stage').scrollIntoView?.({block:'nearest'});
+  outfitPage('preview');
 }
 
 function renderOutfit(job) {
@@ -459,8 +470,16 @@ function renderOutfit(job) {
     button.onclick = () => selectMedia(job.id, key);
     angles.append(button);
   }
-  details.replaceChildren(el('p', metadata, 'muted'), el('p', job.prompt, 'outfit-description'),
-    el('h3', '试穿四视图'), angles);
+  angles.setAttribute('role', 'group');
+  angles.setAttribute('aria-label', '试穿四视图');
+  $('#outfit-angle-picker').replaceChildren(angles);
+  details.replaceChildren(el('p', metadata, 'muted'), el('p', job.prompt, 'outfit-description'));
+  if (job.prompt.length > 52) {
+    const description = el('a', '下载完整描述', 'outfit-description-download');
+    description.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(job.prompt);
+    description.download = 'dollfit-design.txt';
+    details.append(description);
+  }
   if (['partial_failure', 'failed'].includes(job.status)) {
     const retry = el('button', '重试未完成角度', 'secondary');
     retry.onclick = () => action(async () => {

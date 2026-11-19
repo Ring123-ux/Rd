@@ -8,6 +8,6 @@ The full Chinese deployment instructions are in [dollfit/README.md](dollfit/READ
 - `render.yaml`: optional free test Blueprint. Free services lose runtime data on restart/sleep/redeploy. This is not permanent storage.
 - `render.production.yaml`: optional paid 1 CPU / 2 GB + 10 GB persistent-disk example. It is not automatically selected or deployed.
 - Provider keys and passwords must be set in Render Environment, never committed to this repository.
-- Model/example binary parts are all at most 20,000,000 bytes, below GitHub's web upload per-file limit. Upload `dollfit/bundled/` in batches if the browser cannot handle a whole folder at once.
+- Measurement model binary parts are all at most 20,000,000 bytes, below GitHub's web upload per-file limit. Upload `dollfit/bundled/` in batches if the browser cannot handle a whole folder at once.
 - The exported model uses the same floating-point trained weights, height + gender, no weight input. BJD accuracy remains unvalidated.
-- The bundled 3D example is the verified 1,500,000-triangle textured/PBR result. Seller-service tasks offer 500,000, 1,000,000, or 1,500,000 faces, defaulting to 1,500,000. The clothing editor independently allows low, medium, or high quality at `1024x1536`.
+- Seller-service tasks offer 500,000, 1,000,000, or 1,500,000 faces, defaulting to 1,500,000. The clothing editor independently allows low, medium, or high quality at `1024x1536`.

@@ -63,33 +63,6 @@
           "sha256": "6f20ad102e07bee66afe6801d12ecfe0a089d319fd3e24c1117746e027b628ec"
         }
       ]
-    },
-    {
-      "target": "examples/model.glb",
-      "bytes": 75478524,
-      "sha256": "9472c31b70c14eb8a0fd42a0dcc0259873fe9816db79791d5ebaca9b33987a6f",
-      "parts": [
-        {
-          "file": "model.part01",
-          "bytes": 20000000,
-          "sha256": "2ee48d0c15946cbd2c9ccd1e0a84c27f8260362d3891a47de35e69254d537129"
-        },
-        {
-          "file": "model.part02",
-          "bytes": 20000000,
-          "sha256": "06cecea451a515aa653a8eab01282714fa49a4884f629a1ca8e1811fb6fc82a3"
-        },
-        {
-          "file": "model.part03",
-          "bytes": 20000000,
-          "sha256": "0595508c54154678426246f944961ab376318475b73da1df3be2154e689cfd6a"
-        },
-        {
-          "file": "model.part04",
-          "bytes": 15478524,
-          "sha256": "08dcdffc32be2668aff2fed93789e81bdf77a2ff47bc37b44d560470e39f0a77"
-        }
-      ]
     }
   ]
 }
